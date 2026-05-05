@@ -1,4 +1,4 @@
-# 📚 Universal RAG Assistant
+# 🏛️ CodexEngine - Universal RAG Assistant
 
 An enterprise-grade, blazing-fast Retrieval-Augmented Generation (RAG) application. This platform allows users to chat natively with complex PDF documents using advanced semantic search and dynamic, multi-provider LLM routing. 
 
@@ -22,7 +22,7 @@ An enterprise-grade, blazing-fast Retrieval-Augmented Generation (RAG) applicati
 
 ## 🗂️ Project Structure
 ```
-rag-app/
+codex_engine/
 ├── src/
 │   ├── app.py                 # Main Streamlit application and Chat UI
 │   ├── components/
@@ -54,7 +54,7 @@ Tested against:
 1. **Clone the repository:**
    ```bash
    git clone <repository-url>
-   cd rag-app
+   cd codex_engine
    ```
 
 2. **Set up the virtual environment:**
