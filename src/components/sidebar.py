@@ -37,15 +37,15 @@ def render_sidebar():
     # Target Document Search
     # ==========================================
     st.sidebar.subheader("🎯 Target Search")
-    
+
     available_docs = []
     if "vector_store" in st.session_state and st.session_state.vector_store is not None:
         try:
+            # Dynamically fetch ONLY what is actually in the database
             available_docs = st.session_state.vector_store.get_unique_sources()
-        except Exception:
-            available_docs = ["DBeaver v_26_1 Documentation.pdf", "The Final Empire - Brandon Sanderson.pdf", "The Age of Alchemy - Kit Chapman.pdf", "Legacy Over Lust.pdf"]
-    else:
-        available_docs = ["DBeaver v_26_1 Documentation.pdf", "The Final Empire - Brandon Sanderson.pdf", "The Age of Alchemy - Kit Chapman.pdf", "Legacy Over Lust.pdf"]
+        except Exception as e:
+            # Fail gracefully, maybe log the error in the terminal
+            pass
 
     selected_docs = st.sidebar.multiselect(
         "Select specific documents to search (Leave empty to search all):",
