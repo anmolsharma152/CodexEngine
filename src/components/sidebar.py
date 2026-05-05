@@ -2,7 +2,8 @@ import streamlit as st
 import os
 
 def render_sidebar():
-    st.sidebar.title("⚙️ Configuration")
+    # CodexEngine Branding
+    st.sidebar.title("🏛️ CodexEngine Config")
     
     provider = st.sidebar.selectbox(
         "Select AI Provider",
@@ -34,21 +35,29 @@ def render_sidebar():
     st.sidebar.markdown("---")
     
     # ==========================================
-    # Target Document Search
+    # Target Document Search (Robust ChromaDB Fetch)
     # ==========================================
     st.sidebar.subheader("🎯 Target Search")
 
     available_docs = []
     if "vector_store" in st.session_state and st.session_state.vector_store is not None:
         try:
-            # Dynamically fetch ONLY what is actually in the database
-            available_docs = st.session_state.vector_store.get_unique_sources()
+            # Bypass wrappers and ask the database exactly what metadata it holds
+            db_data = st.session_state.vector_store.collection.get(include=['metadatas'])
+            
+            if db_data and db_data.get('metadatas'):
+                # Deduplicate the source names using a set, then sort them
+                unique_sources = list(set(
+                    [meta['source'] for meta in db_data['metadatas'] if meta and 'source' in meta]
+                ))
+                available_docs = sorted(unique_sources)
+                
         except Exception as e:
-            # Fail gracefully, maybe log the error in the terminal
-            pass
+            # Never fail silently in development. Show the error in the sidebar.
+            st.sidebar.error(f"Failed to read index: {str(e)}")
 
     selected_docs = st.sidebar.multiselect(
-        "Select specific documents to search (Leave empty to search all):",
+        "Select specific documents to search (Leave empty for all):",
         options=available_docs,
         default=[]
     )
@@ -56,6 +65,6 @@ def render_sidebar():
     
     st.sidebar.markdown("---")
     
-    if st.sidebar.button("Clear Chat History"):
+    if st.sidebar.button("Clear Chat History", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
