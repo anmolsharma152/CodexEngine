@@ -22,7 +22,8 @@ load_dotenv()
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from src.components.sidebar import render_sidebar
-from src.utils.llm_service import generate_answer
+# FIXED: Imported rewrite_query_with_context
+from src.utils.llm_service import generate_answer, rewrite_query_with_context
 from src.utils.vectorstore import VectorStore
 
 @st.cache_resource
@@ -85,8 +86,22 @@ def chunk_text_with_metadata(pdf_reader, filename, chunk_size=800, overlap=150):
     return chunks, metadatas
 
 def main():
-    st.set_page_config(page_title="RAG App", page_icon="🤖", layout="wide")
-    st.title("📚 Universal RAG Assistant")
+    # Set Page Configuration
+    st.set_page_config(
+        page_title="LexiFlow", 
+        page_icon="🌿", 
+        layout="wide"
+    )
+
+    # Main UI Header
+    st.title("🌿 LexiFlow")
+    st.markdown(
+        """
+        *A high-performance RAG application featuring multi-LLM routing via LiteLLM and local semantic retrieval with ChromaDB.*  
+        **No-nonsense, cite-heavy, and privacy-first.**
+        """
+    )
+    st.divider() # Adds a clean horizontal line below the header
     
     with st.spinner("Initializing Local Vector Database..."):
         initialize_embedding_model()
@@ -100,31 +115,13 @@ def main():
         else:
             st.session_state.processed_files = set()
             
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-    render_sidebar()
-
-    # --- NEW: UI Document Filter ---
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🎯 Target Search")
-
-    # Initialize chat history from the file, not just an empty list
+    # Initialize chat history from the file
     if "messages" not in st.session_state:
         st.session_state.messages = load_chat_history()
 
-    # Display existing chat messages
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-    
-    # Create a multiselect box populated with all indexed files
-    selected_docs = st.sidebar.multiselect(
-        "Search within specific documents:",
-        options=list(st.session_state.processed_files),
-        default=list(st.session_state.processed_files) # Default to searching everything
-    )
-    
+    # Render the consolidated sidebar (which now contains the Target Search)
+    render_sidebar()
+
     with st.expander("📁 Add Knowledge Base (PDFs)", expanded=not st.session_state.processed_files):
         # Show what is currently in the persistent database
         if st.session_state.processed_files:
@@ -152,6 +149,7 @@ def main():
                         except Exception as e:
                             st.error(f"Error reading {uploaded_file.name}: {e}")
 
+    # Display existing chat messages (ONLY ONCE)
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
@@ -181,9 +179,12 @@ def main():
                 
             # 2. Search using the REWRITTEN query
             with st.spinner(f"Searching documents for: '{standalone_query}'..."):
+                # Fetch the selected docs from the state managed by sidebar.py
+                active_docs = st.session_state.get("selected_docs", [])
+                
                 relevant_docs, relevant_metadatas = st.session_state.vector_store.similarity_search(
-                    standalone_query, # Use the new standalone query!
-                    allowed_sources=selected_docs 
+                    standalone_query, 
+                    allowed_sources=active_docs 
                 )
                 
             # 3. Generate the final answer

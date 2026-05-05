@@ -32,6 +32,30 @@ def render_sidebar():
     st.session_state.api_key = api_key
     
     st.sidebar.markdown("---")
+    
+    # ==========================================
+    # Target Document Search
+    # ==========================================
+    st.sidebar.subheader("🎯 Target Search")
+    
+    available_docs = []
+    if "vector_store" in st.session_state and st.session_state.vector_store is not None:
+        try:
+            available_docs = st.session_state.vector_store.get_unique_sources()
+        except Exception:
+            available_docs = ["DBeaver v_26_1 Documentation.pdf", "The Final Empire - Brandon Sanderson.pdf", "The Age of Alchemy - Kit Chapman.pdf", "Legacy Over Lust.pdf"]
+    else:
+        available_docs = ["DBeaver v_26_1 Documentation.pdf", "The Final Empire - Brandon Sanderson.pdf", "The Age of Alchemy - Kit Chapman.pdf", "Legacy Over Lust.pdf"]
+
+    selected_docs = st.sidebar.multiselect(
+        "Select specific documents to search (Leave empty to search all):",
+        options=available_docs,
+        default=[]
+    )
+    st.session_state.selected_docs = selected_docs
+    
+    st.sidebar.markdown("---")
+    
     if st.sidebar.button("Clear Chat History"):
         st.session_state.messages = []
         st.rerun()
