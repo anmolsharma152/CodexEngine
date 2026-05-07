@@ -28,4 +28,4 @@ def actor_node(state):
     chain = prompt | llm
     response = chain.invoke({"context": state["context"], "query": state["initial_query"]})
     
-    return {"response": response.content}
+    return {"answer": response.content}
