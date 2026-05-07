@@ -6,3 +6,5 @@ chroma_db/
 *.pyc
 .DS_Store
 chat_history.json
+archive/
+data/
