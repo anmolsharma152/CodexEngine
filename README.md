@@ -1,6 +1,6 @@
 # 🏛️ CodexEngine V2 - Agentic RAG Architecture
 
-An enterprise-grade, self-correcting Retrieval-Augmented Generation (RAG) system. CodexEngine V2 abandons the standard, fragile "Retrieve-Generate" pipeline in favor of a stateful, cyclic **Agentic Workflow** built on LangGraph. 
+An enterprise-grade, self-correcting Retrieval-Augmented Generation (RAG) system. CodexEngine V2 abandons the standard, fragile "Retrieve-Generate" pipeline in favor of a stateful, cyclic **Agentic Workflow** built on LangGraph.
 
 By introducing hierarchical Parent-Child indexing and an autonomous Evaluator node, the engine proactively detects missing context, rewrites its own search queries, and loops back to the database—eliminating the "Semantic Horizon" and preventing zero-shot hallucinations.
 
@@ -9,7 +9,7 @@ By introducing hierarchical Parent-Child indexing and an autonomous Evaluator no
 Standard RAG systems operate as Directed Acyclic Graphs (DAGs)—static pipelines that fail silently when retrieval misses the mark. CodexEngine V2 implements an **Agentic Actor-Critic workflow** using LangGraph to introduce autonomous error correction.
 
 1. **The Senses (Retriever Node):** Employs Hierarchical RAG. It searches for highly specific 400-character "Child" anchors, but extracts embedded 2,000-character "Parent" context blocks directly from metadata, delivering massive context windows with only a single database hop.
-2. **The Critic (Evaluator Node):** A deterministic LLM (Llama-3.3-70b, Temp=0) acts as a strict grader. It evaluates the retrieved context against the user's intent *before* generation. 
+2. **The Critic (Evaluator Node):** A deterministic LLM (Llama-3.3-70b, Temp=0) acts as a strict grader. It evaluates the retrieved context against the user's intent *before* generation.
    * *Cyclic Conditionality:* If the context is insufficient, the Critic intercepts the flow, dynamically rewrites the query for higher precision, and forces a re-retrieval loop.
 3. **The Actor (Generator Node):** Only executes when the Critic explicitly validates the context. This guarantees zero-shot hallucination prevention and produces highly technical, factual synthesis.
 
@@ -22,7 +22,7 @@ Standard RAG systems operate as Directed Acyclic Graphs (DAGs)—static pipeline
 
 ## 🗂️ Project Structure
 ```
-codex_engine/
+CodexEngine/
 ├── data/
 │   └── raw/                   # Target PDF documents
 ├── eval/
@@ -38,6 +38,7 @@ codex_engine/
 │       ├── retriever.py       # ONNX-based semantic search & Parent extraction
 │       ├── evaluator.py       # The Critic: Context grading and query rewriting
 │       └── actor.py           # The Generator: Final factual synthesis
+├── app.py                     # Main Streamlit UI entry point
 ├── test_agent.py              # CLI execution script for the Agentic Loop
 ├── requirements.txt           # Lean, zero-bloat dependencies
 └── .env                       # API keys (e.g., GROQ_API_KEY)
@@ -45,20 +46,23 @@ codex_engine/
 
 ## 📂 Targeted Evaluation Data
 
-The engine's self-correction capabilities are tested against complex, multi-domain documents:
-1. **Technical Manuals** (DBeaver v26.1 UI Navigation)
-2. **High-Fantasy Fiction** (*The Final Empire* narrative logic)
-3. **Academic Surveys** (Multi-Agent RAG System Design Patterns)
-4. **Sociopolitical Literature** (*India that is Bharat* axiological frameworks)
-5. **Quantum Physics** (Surface codes and logical error rates)
+The engine's self-correction capabilities are tested against a highly diverse corpus of complex, multi-domain documents to ensure robust cross-domain generalization:
+
+* **AI Research & System Architecture:** Agentic RAG surveys, adversarial attacks on Multimodal LLMs, and deep learning for source code generation.
+* **Geopolitics & Macroeconomics:** Spatial analysis (*Prisoners of Geography*), economic history (*Open Veins of Latin America*), and Anthropic Nowcasting reports.
+* **Theoretical Computer Science:** Algorithmic bounds for open addressing.
+* **Quantum Physics:** Surface codes and logical error rate thresholds.
+* **Sociopolitical Literature:** *India that is Bharat* axiological frameworks.
+* **Technical Manuals:** DBeaver v26.1 database documentation and UI navigation.
+* **High-Fantasy Fiction:** *The Final Empire* narrative logic and world-building.
 
 ## 🚀 Setup Instructions
 
 1. **Clone the repository:**
    ```bash
    git clone <repository-url>
-   cd codex_engine
-   ```
+   cd CodexEngine
+   ````
 2. **Set up the lean virtual environment:**
    ```bash
    python3 -m venv venv
@@ -85,13 +89,6 @@ To test the Agentic Actor-Critic loop and watch the Evaluator rewrite queries in
 ```bash
 python test_agent.py
 ```
-
-## 🛤️ Roadmap to V3
-
-[x] LangGraph Orchestration: Move to a stateful, multi-node workflow.
-[x] Actor-Critic Loop: Implement an automated evaluator to prevent "lazy" summarization.
-[ ] Hybrid Retrieval: Integrate BM25 (keyword) + Dense (Vector) via Reciprocal Rank Fusion (RRF) in the Retriever node.
-[ ] Streamlit UI Integration: Wire the compiled LangGraph directly into the frontend chat interface to visualize the agent's thought process for users.
 
 ## 🤝 Contributing
 
