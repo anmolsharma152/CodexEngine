@@ -90,6 +90,23 @@ To test the Agentic Actor-Critic loop and watch the Evaluator rewrite queries in
 python test_agent.py
 ```
 
+## 🛤️ Roadmap to V2.5: The Production-Grade Evolution
+
+CodexEngine is transitioning from a modular agentic framework to a production-ready RAG platform. The following features are currently being integrated to ensure enterprise-level scalability, reliability, and observability:
+
+### 🏗️ Infrastructure & Scalability
+* **PostgreSQL + pgvector Migration:** Moving beyond local vector files to a robust, relational backend capable of handling multi-tenant knowledge bases and millions of embeddings.
+* **Async FastAPI Backbone:** Refactoring the core engine into an asynchronous API service to support non-blocking agentic loops and concurrent user sessions.
+* **Pydantic Data Validation:** Implementing strict schema enforcement across all graph nodes to ensure system stability and prevent LLM-driven state corruption.
+
+### 🧠 Hybrid Intelligence
+* **Autonomous Web Search Node:** Integrating live internet search capabilities (Brave/Serper) to supplement local PDF context when the Critic identifies information gaps.
+* **Local Cross-Encoder Re-ranking:** Slashing latency and Groq token costs by scoring retrieved chunks locally before passing them to the high-parameter LLM.
+
+### 🎨 Enterprise Experience & MLOps
+* **Next.js Command Center:** A complete frontend redesign, moving away from Streamlit to a professional dashboard featuring a "Knowledge Base Manager" and a real-time "Agentic Thought Trace."
+* **CI/CD Benchmarking:** Automated GitHub Actions that trigger the evaluation suite on every push, ensuring accuracy never regresses during rapid scaling.
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a pull request or open an issue for any enhancements or bug fixes.
