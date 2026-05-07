@@ -1,0 +1,34 @@
+{
+  "dataset": [
+    {
+      "query_id": "q1_academic",
+      "question": "What are the three core design patterns for Multi-Agent RAG systems?",
+      "target_document": "Agentic Retrieval-Augmented Generation_ A Survey on Agentic RAG.pdf",
+      "eval_focus": "Categorical Accuracy"
+    },
+    {
+      "query_id": "q2_narrative",
+      "question": "What was Kelsier's specific plan for utilizing the Eleventh Metal against the Lord Ruler?",
+      "target_document": "The Final Empire - Brandon Sanderson.pdf",
+      "eval_focus": "Long-Context Logic"
+    },
+    {
+      "query_id": "q3_technical",
+      "question": "What is the exact UI path to manage SSL certificates for a MySQL driver?",
+      "target_document": "DBeaver v_26_1 Documentation.pdf",
+      "eval_focus": "Mechanical Retrieval"
+    },
+    {
+      "query_id": "q4_physics",
+      "question": "Explain the relationship between 'distance' and 'logical error rate' in surface codes.",
+      "target_document": "Quantum error correction below the surface code threshold.pdf",
+      "eval_focus": "Technical Retrieval"
+    },
+    {
+      "query_id": "q5_sociopolitical",
+      "question": "How does the author define the 'Axiological' framework of coloniality?",
+      "target_document": "India that is Bharat - J Sai Deepak.pdf",
+      "eval_focus": "Nuance and Tone"
+    }
+  ]
+}

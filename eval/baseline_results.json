@@ -1,0 +1,37 @@
+[
+  {
+    "query_id": "q1_academic",
+    "question": "What are the three core design patterns for Multi-Agent RAG systems?",
+    "eval_focus": "Categorical Accuracy",
+    "retrieved_context": "specific implementations, and no unified taxonomy currently organizes Agentic RAG systems along principled design\ndimensions.\nThis paper presents an analytical survey aimed at structuring this emerging field. It reviews the evolution of RAG\nparadigms, including na\u00efve, modular, and graph-based RAG [17], and their transition toward agentic systems. A princi-\n---\nunparalleled flexibility, scalability, and context-awareness across diverse applications. This paper\npresents an analytical survey of Agentic RAG1 systems. It traces the evolution of RAG paradigms,\nintroduces a principled taxonomy of Agentic RAG architectures based on agent cardinality, control\nstructure, autonomy, and knowledge representation, and provides a comparative analysis of design\n---\nresponses\u2014making Agentic RAG effective for complex, multi-domain tasks requiring precision and adaptability, as\nillustrated in Fig. 1.\nDespite rapidly growing interest, the Agentic RAG field remains fragmented, with diverse architectures, inconsistent\nterminology, and limited comparative understanding. Existing work focuses on individual frameworks or application-",
+    "baseline_answer": "I don't know."
+  },
+  {
+    "query_id": "q2_narrative",
+    "question": "What was Kelsier's specific plan for utilizing the Eleventh Metal against the Lord Ruler?",
+    "eval_focus": "Long-Context Logic",
+    "retrieved_context": "What was I thinking? she thought with despair. Did I presume to succeed\nwhere Kelsier had failed? He knew that the Eleventh Metal was useless.\nIt had done something, true\u2014but it certainly hadn\u2019t killed the Lord Ruler.\nShe sat, thinking, trying to figure out what had happened. There had been\nan odd familiarity about the things the Eleventh Metal had shown her. Not\n---\nShe wanted to be part of what it was doing; she wanted to help.\nHowever, another part of her whispered that Kelsier wasn\u2019t telling her\neverything. He might trust her; he might not. However, he certainly had\nsecrets. The Eleventh Metal, and therefore the Lord Ruler, were involved in\nthose secrets.\nKelsier caught her eyes, and he must have seen her intention to follow in\n---\n\u201cAnd . . . the Lord Ruler?\u201d Yeden asked.\nKelsier smiled. \u201cI\u2019m still planning to deal with him personally\u2014I just\nhave to figure out how to make the Eleventh Metal work.\u201d\n\u201cAnd if you don\u2019t?\u201d\n\u201cWell,\u201d Kelsier said, writing Yeden: Preparation and Rule beneath Skaa\nRebellion on the board, \u201cwe\u2019ll try and find a way to trick him out of the",
+    "baseline_answer": "I don't know. The context only mentions that Kelsier is still planning to deal with the Lord Ruler personally and needs to figure out how to make the Eleventh Metal work, but it does not provide his specific plan."
+  },
+  {
+    "query_id": "q3_technical",
+    "question": "What is the exact UI path to manage SSL certificates for a MySQL driver?",
+    "eval_focus": "Mechanical Retrieval",
+    "retrieved_context": "If you prefer managing certificates manually through the interface, see Managing certificates in the Custom Truststore. \nAdd certificates \nTo add a certificate, place the file in the {DBeaverData}/secure/custom or in \n{DBeaverData}/secure/custom-certs folder. DBeaver will detect and import it on startup. For \nmore details on DBeaverData location, see Workspace location.\n---\n\u2022 Only certificates are imported, not private keys. \n\u2022 The custom-certs directory must not contain any extra files or subfolders. \nLearn more \nFor general SSL configuration, see SSL overview. \nTip \nImportant\n---\nImport custom certificates \nDBeaver can import certificates from a predefined folder at startup. This method is useful for \ndatabases protected by self-signed certificates. It ensures secure connections without manual setup, \nespecially when a firewall or internal security policies require specific certificates.",
+    "baseline_answer": "I don't know."
+  },
+  {
+    "query_id": "q4_physics",
+    "question": "Explain the relationship between 'distance' and 'logical error rate' in surface codes.",
+    "eval_focus": "Technical Retrieval",
+    "retrieved_context": "(DQLR) [33]. b, Error injection in the surface code. Distance-\n3 averages over 9 subset codes, and distance-5 averages over\n4 subset codes, as in Fig. 1. Logical performance is plot-\nted against the mean weight-4 detection probability averag-\ning over all codes, where increasing the error injection angle\u03b1\nincreases detection probability. Each experiment is 10 cycles\n---\nlogical noise floor.\nFurthermore, while we have tested the scaling law in\nEq. 1 at low distances, repetition codes allow us to scan\nto higher distances and lower logical errors. Following a\nsimilar coherent error injection method as in the surface\ncode, we show the scaling of logical error versus physi-\ncal error and code distance in Fig. 3b-c, observing good\n---\n2\nFIG. 1. Surface code performance. a, Schematic of a distance-7 surface code on a 105-qubit processor. Each measure qubit\n(blue) is associated with a stabilizer (blue colored tile). Red outline: one of nine distance-3 codes measured for comparison\n(3 \u00d7 3 array). Orange outline: one of four distance-5 codes measured for comparison (4 corners). Black outline: distance-7",
+    "baseline_answer": "According to the context, as the distance in surface codes increases, the logical error rate decreases. This is implied by the statement \"repetition codes allow us to scan to higher distances and lower logical errors.\" Additionally, Fig. 3b-c is mentioned to show the scaling of logical error versus physical error and code distance, but the exact relationship is not explicitly stated in the provided context."
+  },
+  {
+    "query_id": "q5_sociopolitical",
+    "question": "How does the author define the 'Axiological' framework of coloniality?",
+    "eval_focus": "Nuance and Tone",
+    "retrieved_context": "questions, through the course of this chapter, I have relied on first-hand\nmaterial, apart from the scholarly works of Dr. Jakob De Roover, Nicolas B.\nDirks1 and others who have expounded on these questions persuasively in\ngreat detail. At this juncture, I must clarify that my discussion on these\naspects will be brief and limited to locating such literature in the broader\ncontext of coloniality.\n---\nthe use of such terms became apparent to me after my exposure to\ncoloniality. But then, what exactly is coloniality, and how is it different\n---\ncoloniality. In the interest of honesty, conceptual clarity and consistency,",
+    "baseline_answer": "I don't know."
+  }
+]
