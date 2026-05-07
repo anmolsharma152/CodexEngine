@@ -1,5 +1,12 @@
 streamlit
+python-dotenv
 chromadb
 pypdf
-python-dotenv
 litellm
+langchain
+langchain-community
+langchain-groq
+langchain-chroma
+langgraph
+ragas
+rank_bm25

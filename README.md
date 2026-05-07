@@ -1,53 +1,56 @@
-# 🏛️ CodexEngine - Universal RAG Assistant
+# 🏛️ CodexEngine V2 - Agentic RAG Architecture
 
-An enterprise-grade, blazing-fast Retrieval-Augmented Generation (RAG) application. This platform allows users to chat natively with complex PDF documents using advanced semantic search and dynamic, multi-provider LLM routing. 
+An enterprise-grade, self-correcting Retrieval-Augmented Generation (RAG) system. CodexEngine V2 abandons the standard, fragile "Retrieve-Generate" pipeline in favor of a stateful, cyclic **Agentic Workflow** built on LangGraph. 
 
-## 🚀 Current Architecture (V1)
+By introducing hierarchical Parent-Child indexing and an autonomous Evaluator node, the engine proactively detects missing context, rewrites its own search queries, and loops back to the database—eliminating the "Semantic Horizon" and preventing zero-shot hallucinations.
 
-- **UI**: Streamlit with custom low-contrast dark mode.
-- **LLM Orchestration**: LiteLLM (supporting Groq, OpenAI, Gemini).
-- **Vector Database**: ChromaDB using **Cosine Similarity** for thematic retrieval.
-- **Chunking Strategy**: Custom **Recursive Character Splitting** to maintain sentence and paragraph integrity.
-- **Persistence**: Chat history is persisted via local JSON; document vectors are stored in `./chroma_db`.
+## 🚀 The V2 Architecture: The Agentic Self-Reflection Loop
 
-## ✨ Features
+Standard RAG systems operate as Directed Acyclic Graphs (DAGs)—static pipelines that fail silently when retrieval misses the mark. CodexEngine V2 implements an **Agentic Actor-Critic workflow** using LangGraph to introduce autonomous error correction.
 
-- **Contextual Query Rewriting**: Follow-up questions are automatically contextualized based on conversation history.
-- **Source Attributions**: Every answer includes [Source | Page] citations.
-- **Multi-Document Support**: Ability to target specific documents or search the entire repository.
-* **Multi-Provider LLM Routing:** Built on `LiteLLM`, allowing seamless switching between Groq, OpenAI, Anthropic, and Google Gemini via the UI.
-* **Conversational Memory:** Streamlit-powered chat interface that retains conversation history for natural, multi-turn follow-up questions.
-* **Offline Privacy-First Embeddings:** Utilizes `ChromaDB` and the local `all-MiniLM-L6-v2` model to embed documents directly on your CPU—ensuring your sensitive data is never sent to a cloud embedding API.
-* **Smart UI Architecture:** Includes dynamic sidebar settings, API key masking, and dedicated context expanders to verify LLM grounding and prevent hallucinations.
+1. **The Senses (Retriever Node):** Employs Hierarchical RAG. It searches for highly specific 400-character "Child" anchors, but extracts embedded 2,000-character "Parent" context blocks directly from metadata, delivering massive context windows with only a single database hop.
+2. **The Critic (Evaluator Node):** A deterministic LLM (Llama-3.3-70b, Temp=0) acts as a strict grader. It evaluates the retrieved context against the user's intent *before* generation. 
+   * *Cyclic Conditionality:* If the context is insufficient, the Critic intercepts the flow, dynamically rewrites the query for higher precision, and forces a re-retrieval loop.
+3. **The Actor (Generator Node):** Only executes when the Critic explicitly validates the context. This guarantees zero-shot hallucination prevention and produces highly technical, factual synthesis.
+
+## ✨ Key Technical Features
+
+* **Stateful Orchestration:** Powered by `LangGraph`, managing complex routing, loop iteration limits, and memory state tracking across the Agentic cycle.
+* **Zero-Bloat ONNX Embeddings:** Uses a custom wrapper to natively utilize ChromaDB's built-in ONNX engine, bypassing heavy `sentence-transformers` and PyTorch dependencies to save ~5GB of environment space.
+* **Deterministic Inference:** Built around Groq's blazing-fast `llama-3.3-70b-versatile` API at `temperature=0` to ensure greedy decoding, maximum fact-preservation, and mathematical consistency in evaluation.
+* **Hierarchical (Parent-Child) Indexing:** Decouples the *search payload* from the *generation payload* to solve the "Fragmented Context" problem inherent in standard Recursive Character Splitting.
 
 ## 🗂️ Project Structure
 ```
 codex_engine/
+├── data/
+│   └── raw/                   # Target PDF documents
+├── eval/
+│   ├── golden_queries.json    # The 5-question baseline dataset
+│   └── v2_results.json        # Agentic performance outputs
+├── scripts/
+│   ├── ingestion.py           # V2 Hierarchical indexing (Parent embedded in Child metadata)
+│   └── eval_baseline.py       # V1 Dumb-RAG baseline testing
 ├── src/
-│   ├── app.py                 # Main Streamlit application and Chat UI
-│   ├── components/
-│   │   └── sidebar.py         # Provider selection and API key management
-│   └── utils/
-│       ├── vectorstore.py     # ChromaDB local vector database management
-│       └── llm_service.py     # LiteLLM routing and prompt engineering
-├── requirements.txt           # Environment dependencies
-├── .env                       # (Ignored) Local API keys
-└── README.md                  # Project documentation
+│   ├── graph.py               # LangGraph compilation and conditional edge routing
+│   ├── state.py               # TypedDict for tracking queries, context, and iterations
+│   └── nodes/
+│       ├── retriever.py       # ONNX-based semantic search & Parent extraction
+│       ├── evaluator.py       # The Critic: Context grading and query rewriting
+│       └── actor.py           # The Generator: Final factual synthesis
+├── test_agent.py              # CLI execution script for the Agentic Loop
+├── requirements.txt           # Lean, zero-bloat dependencies
+└── .env                       # API keys (e.g., GROQ_API_KEY)
 ```
 
-## 📂 Targeted Data Types
+## 📂 Targeted Evaluation Data
 
-Tested against:
-1. Technical Manuals (DBeaver v26.1)
-2. High-Fantasy Fiction (*The Final Empire*)
-3. Historical Non-Fiction (*The Age of Alchemy*)
-4. Subjective Manuals (*Legacy Over Lust*)
-
-## 🛤️ Roadmap to V2 (Agentic)
-
-- [ ] **Hybrid Retrieval**: Integrate BM25 (keyword) + Dense (Vector) via Reciprocal Rank Fusion (RRF).
-- [ ] **LangGraph Orchestration**: Move to a stateful, multi-node workflow.
-- [ ] **Actor-Critic Loop**: Implement an automated evaluator to prevent "lazy" summarization.
+The engine's self-correction capabilities are tested against complex, multi-domain documents:
+1. **Technical Manuals** (DBeaver v26.1 UI Navigation)
+2. **High-Fantasy Fiction** (*The Final Empire* narrative logic)
+3. **Academic Surveys** (Multi-Agent RAG System Design Patterns)
+4. **Sociopolitical Literature** (*India that is Bharat* axiological frameworks)
+5. **Quantum Physics** (Surface codes and logical error rates)
 
 ## 🚀 Setup Instructions
 
@@ -56,42 +59,44 @@ Tested against:
    git clone <repository-url>
    cd codex_engine
    ```
-
-2. **Set up the virtual environment:**
+2. **Set up the lean virtual environment:**
    ```bash
    python3 -m venv venv
-   source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+   source venv/bin/activate
    ```
-
-3. **Install dependencies:**
-   Make sure you have Python installed, then run:
+3. **Install zero-bloat dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
-
-4. **Environment Variables (Optional):**
-   Create a .env file in the root directory to auto-fill your keys in the UI:
-   
-   Example:
-   GROQ_API_KEY=your_groq_key_here
-   OPENAI_API_KEY=your_openai_key_here
+4. **Environment Variables:**
+   Create a .env file in the root directory.
+   ```bash
+   GROQ_API_KEY=gsk_your_actual_key_here
+   ```
+5. **Initialize the Vector Database:**
+   Place your PDFs in ```data/raw/``` and run the hierarchical ingestion:
+   ```bash
+   python scripts/ingestion.py
+   ```
 
 ## 💻 Usage
 
-To run the application, execute the following command in your terminal:
+To test the Agentic Actor-Critic loop and watch the Evaluator rewrite queries in real-time in your terminal:
 ```bash
-streamlit run src/app.py
+python test_agent.py
 ```
 
-Once the application is running, you can:
-1. Select Provider: Choose your preferred LLM provider in the left sidebar.
-2. Upload Documents: Add one or more PDF files to the Knowledge Base.
-3. Chat: Ask complex, multi-hop reasoning questions about your documents in the chat interface.
+## 🛤️ Roadmap to V3
 
-## Contributing
+[x] LangGraph Orchestration: Move to a stateful, multi-node workflow.
+[x] Actor-Critic Loop: Implement an automated evaluator to prevent "lazy" summarization.
+[ ] Hybrid Retrieval: Integrate BM25 (keyword) + Dense (Vector) via Reciprocal Rank Fusion (RRF) in the Retriever node.
+[ ] Streamlit UI Integration: Wire the compiled LangGraph directly into the frontend chat interface to visualize the agent's thought process for users.
+
+## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a pull request or open an issue for any enhancements or bug fixes.
 
-## License
+## 📄 License
 
 This project is licensed under the MIT License. See the LICENSE file for more details.
