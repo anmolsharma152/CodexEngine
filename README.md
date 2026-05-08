@@ -1,56 +1,58 @@
-# 🏛️ CodexEngine V2 - Agentic RAG Architecture
+# 🏛️ CodexEngine V2.5 - Production-Grade Agentic RAG
 
-An enterprise-grade, self-correcting Retrieval-Augmented Generation (RAG) system. CodexEngine V2 abandons the standard, fragile "Retrieve-Generate" pipeline in favor of a stateful, cyclic **Agentic Workflow** built on LangGraph.
+An enterprise-grade, self-correcting Retrieval-Augmented Generation (RAG) system. CodexEngine V2.5 completely replaces the fragile "Retrieve-Generate" pipeline with a stateful, cyclic **Agentic Workflow** built on LangGraph and powered by PostgreSQL (`pgvector`).
 
-By introducing hierarchical Parent-Child indexing and an autonomous Evaluator node, the engine proactively detects missing context, rewrites its own search queries, and loops back to the database—eliminating the "Semantic Horizon" and preventing zero-shot hallucinations.
+By introducing "Prose-Aware" chunking, dynamic intent detection, and a strict Critic node, the engine proactively detects missing context, rewrites its own search queries based on the domain (Academic vs. Narrative), and guarantees highly grounded synthesis.
 
-## 🚀 The V2 Architecture: The Agentic Self-Reflection Loop
+## 🚀 The V2.5 Architecture: The Dynamic Agentic Loop
 
-Standard RAG systems operate as Directed Acyclic Graphs (DAGs)—static pipelines that fail silently when retrieval misses the mark. CodexEngine V2 implements an **Agentic Actor-Critic workflow** using LangGraph to introduce autonomous error correction.
+Standard RAG systems operate as Directed Acyclic Graphs (DAGs)—static pipelines that fail silently when retrieval misses the mark. CodexEngine V2.5 implements a **Typed Agentic workflow** using LangGraph to introduce autonomous error correction.
 
-1. **The Senses (Retriever Node):** Employs Hierarchical RAG. It searches for highly specific 400-character "Child" anchors, but extracts embedded 2,000-character "Parent" context blocks directly from metadata, delivering massive context windows with only a single database hop.
-2. **The Critic (Evaluator Node):** A deterministic LLM (Llama-3.3-70b, Temp=0) acts as a strict grader. It evaluates the retrieved context against the user's intent *before* generation.
-   * *Cyclic Conditionality:* If the context is insufficient, the Critic intercepts the flow, dynamically rewrites the query for higher precision, and forces a re-retrieval loop.
-3. **The Actor (Generator Node):** Only executes when the Critic explicitly validates the context. This guarantees zero-shot hallucination prevention and produces highly technical, factual synthesis.
+1. **The Senses (Retriever Node):** Employs `pgvector` for exact cosine-similarity search. It ingests documents using 1500-character "Prose-Aware" chunks (with 300-char overlap), providing massive, unbroken context windows that preserve narrative and academic flow.
+2. **The Critic (Evaluator Node):** A deterministic LLM acts as a strict grader, scoring retrieved context from 0.0 to 1.0. It evaluates the context against the user's intent *before* generation.
+3. **The Strategist (Rewriter Node):** If the Critic scores the context below 0.7, the flow routes here. The Rewriter detects the domain intent (e.g., Technical vs. Narrative) and dynamically shifts its search strategy—looking for "axiological frameworks" in academia, or "triggering events" in fiction.
+4. **The Actor (Generator Node):** A role-aware synthesis engine. It shifts its persona (e.g., "Technical Analyst" vs "Narrative Analyst") to match the query, ensuring it never apologizes for a lack of "character motivation" when answering a quantum physics question.
 
 ## ✨ Key Technical Features
 
-* **Stateful Orchestration:** Powered by `LangGraph`, managing complex routing, loop iteration limits, and memory state tracking across the Agentic cycle.
-* **Zero-Bloat ONNX Embeddings:** Uses a custom wrapper to natively utilize ChromaDB's built-in ONNX engine, bypassing heavy `sentence-transformers` and PyTorch dependencies to save ~5GB of environment space.
-* **Deterministic Inference:** Built around Groq's blazing-fast `llama-3.3-70b-versatile` API at `temperature=0` to ensure greedy decoding, maximum fact-preservation, and mathematical consistency in evaluation.
-* **Hierarchical (Parent-Child) Indexing:** Decouples the *search payload* from the *generation payload* to solve the "Fragmented Context" problem inherent in standard Recursive Character Splitting.
+* **Stateful Orchestration:** Powered by `LangGraph`, managing complex routing and strictly typed via **Pydantic V2** (`AgentState`) to prevent LLM hallucination and "TPM Death Spirals."
+* **PostgreSQL + pgvector:** Replaced local file-based vector stores (ChromaDB) with a robust, relational backend capable of handling enterprise scaling and exact mathematical vector matching.
+* **Deterministic Inference:** Built around Groq's blazing-fast APIs. Evaluators use greedy decoding (`temperature=0`), while Actors are allowed slight creative nuance (`temperature=0.3`).
+* **Universal Domain Adaptability:** The engine handles everything from SQL documentation to high-fantasy novels without manual configuration, automatically adjusting its "Logic Lean."
 
 ## 🗂️ Project Structure
 ```
 CodexEngine/
+├── archives/                  # Legacy V2 logic, abandoned Chroma DBs, and old tests
 ├── data/
 │   └── raw/                   # Target PDF documents
 ├── eval/
-│   ├── golden_queries.json    # The 5-question baseline dataset
-│   └── v2_results.json        # Agentic performance outputs
+│   ├── golden_queries.json    # The core cross-domain benchmark dataset
+│   └── v2_5_live_results.json # Latest dynamic agentic performance outputs
 ├── scripts/
-│   ├── ingestion.py           # V2 Hierarchical indexing (Parent embedded in Child metadata)
-│   └── eval_baseline.py       # V1 Dumb-RAG baseline testing
+│   ├── ingestion.py           # V2.5 Prose-Aware chunking and pgvector insertion
+│   ├── test_golden.py         # Single-query targeted testing
+│   └── test_rigorous.py       # Full benchmark sweep across all domains
 ├── src/
 │   ├── graph.py               # LangGraph compilation and conditional edge routing
-│   ├── state.py               # TypedDict for tracking queries, context, and iterations
+│   ├── state.py               # Pydantic V2 AgentState schema
+│   ├── utils.py               # Shared embedding functions
 │   └── nodes/
-│       ├── retriever.py       # ONNX-based semantic search & Parent extraction
-│       ├── evaluator.py       # The Critic: Context grading and query rewriting
-│       └── actor.py           # The Generator: Final factual synthesis
-├── app.py                     # Main Streamlit UI entry point
-├── test_agent.py              # CLI execution script for the Agentic Loop
-├── requirements.txt           # Lean, zero-bloat dependencies
-└── .env                       # API keys (e.g., GROQ_API_KEY)
+│       ├── retriever.py       # pgvector cosine similarity search
+│       ├── evaluator.py       # The Critic: Context grading (0.0 - 1.0)
+│       ├── rewriter.py        # The Strategist: Intent-based query pivoting
+│       └── actor.py           # The Generator: Role-aware factual synthesis
+├── app.py                     # Main Frontend entry point (Streamlit/Chainlit)
+├── requirements.txt           # Lean dependencies (pgvector, langgraph, pydantic)
+└── .env                       # Environment variables
 ```
 
 ## 📂 Targeted Evaluation Data
 
-The engine's self-correction capabilities are tested against a highly diverse corpus of complex, multi-domain documents to ensure robust cross-domain generalization:
+The engine's self-correction capabilities are rigorously benchmarked against a highly diverse corpus to ensure robust cross-domain generalization:
 
 * **AI Research & System Architecture:** Agentic RAG surveys, adversarial attacks on Multimodal LLMs, and deep learning for source code generation.
 * **Geopolitics & Macroeconomics:** Spatial analysis (*Prisoners of Geography*), economic history (*Open Veins of Latin America*), and Anthropic Nowcasting reports.
-* **Theoretical Computer Science:** Algorithmic bounds for open addressing.
 * **Quantum Physics:** Surface codes and logical error rate thresholds.
 * **Sociopolitical Literature:** *India that is Bharat* axiological frameworks.
 * **Technical Manuals:** DBeaver v26.1 database documentation and UI navigation.
@@ -76,36 +78,40 @@ The engine's self-correction capabilities are tested against a highly diverse co
    Create a .env file in the root directory.
    ```bash
    GROQ_API_KEY=gsk_your_actual_key_here
+   DB_URL=postgresql://user:password@localhost:5432/codex_db
    ```
 5. **Initialize the Vector Database:**
-   Place your PDFs in ```data/raw/``` and run the hierarchical ingestion:
+   Place your PDFs in ```data/raw/``` and run the ingestion script:
    ```bash
    python scripts/ingestion.py
    ```
 
 ## 💻 Usage
 
-To test the Agentic Actor-Critic loop and watch the Evaluator rewrite queries in real-time in your terminal:
+To run the rigorous evaluation sweep and watch the Evaluator/Rewriter adapt to different domains in your terminal:
 ```bash
-python test_agent.py
+python -m scripts.test_rigorous
 ```
 
-## 🛤️ Roadmap to V2.5: The Production-Grade Evolution
+To test a specific, targeted query:
+```bash
+python scripts/test_golden.py
+```
 
-CodexEngine is transitioning from a modular agentic framework to a production-ready RAG platform. The following features are currently being integrated to ensure enterprise-level scalability, reliability, and observability:
+## 🛤️ Roadmap to V3.0: The Production SaaS Evolution
+
+CodexEngine V2.5 has solidified the backend intelligence. The next phase focuses on user experience, API decoupling, and local optimization:
 
 ### 🏗️ Infrastructure & Scalability
-* **PostgreSQL + pgvector Migration:** Moving beyond local vector files to a robust, relational backend capable of handling multi-tenant knowledge bases and millions of embeddings.
-* **Async FastAPI Backbone:** Refactoring the core engine into an asynchronous API service to support non-blocking agentic loops and concurrent user sessions.
-* **Pydantic Data Validation:** Implementing strict schema enforcement across all graph nodes to ensure system stability and prevent LLM-driven state corruption.
+* **Async FastAPI Backbone:** Refactoring the core engine into an asynchronous API service (`server.py`) using Server-Sent Events (SSE) to stream the agentic "Thought Trace" (critic scores, rewrites) without blocking.
+* **Next.js Command Center:** A complete frontend redesign, moving away from Streamlit to a professional React-based dashboard featuring a "Knowledge Base Manager" and real-time execution logs.
 
 ### 🧠 Hybrid Intelligence
-* **Autonomous Web Search Node:** Integrating live internet search capabilities (Brave/Serper) to supplement local PDF context when the Critic identifies information gaps.
-* **Local Cross-Encoder Re-ranking:** Slashing latency and Groq token costs by scoring retrieved chunks locally before passing them to the high-parameter LLM.
+* **Autonomous Web Search Node:** Integrating live internet search capabilities (Tavily/DuckDuckGo) into the LangGraph routing. If the Critic identifies unresolvable information gaps within the local pgvector corpus, the graph will autonomously fallback to the web.
+* **Local Cross-Encoder Re-ranking:** Slashing latency and Groq token costs by adding a local re-scoring layer (e.g., `ms-marco-MiniLM`). This will optimize the top 5 chunks retrieved by pgvector *before* they are passed to the high-parameter LLM.
 
-### 🎨 Enterprise Experience & MLOps
-* **Next.js Command Center:** A complete frontend redesign, moving away from Streamlit to a professional dashboard featuring a "Knowledge Base Manager" and a real-time "Agentic Thought Trace."
-* **CI/CD Benchmarking:** Automated GitHub Actions that trigger the evaluation suite on every push, ensuring accuracy never regresses during rapid scaling.
+### ⚙️ Enterprise MLOps
+* **CI/CD Benchmarking:** Implementing automated GitHub Actions (`eval.yml`) that trigger the `test_rigorous.py` evaluation suite on every push, ensuring Critic accuracy and retrieval precision never regress during rapid scaling.
 
 ## 🤝 Contributing
 
