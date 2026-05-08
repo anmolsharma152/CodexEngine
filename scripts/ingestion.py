@@ -1,80 +1,57 @@
 import os
-import uuid
+import re
+from sqlalchemy import create_engine, text
+from src.utils import get_embedding_function
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-import chromadb
-from chromadb.utils import embedding_functions
+from dotenv import load_dotenv
 
-# Configuration Paths
-DATA_PATH = "data/raw"
-CHROMA_PATH = "chroma_db"
-COLLECTION_NAME = "codex_v2_hierarchy"
+load_dotenv()
+engine = create_engine(os.getenv("DB_URL"))
+ef = get_embedding_function()
 
-def setup_chroma():
-    client = chromadb.PersistentClient(path=CHROMA_PATH)
-    # This automatically defaults to the lightweight ONNX runtime
-    emb_fn = embedding_functions.DefaultEmbeddingFunction()
-    collection = client.get_or_create_collection(
-        name=COLLECTION_NAME, 
-        embedding_function=emb_fn,
-        metadata={"hnsw:space": "cosine"}
-    )
-    return collection
+def clean_text(t):
+    return t.replace("\x00", "").strip()
 
-def build_v2_index():
-    collection = setup_chroma()
-    
-    # The V2 Hierarchical Splitters
-    parent_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
-    child_splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=50)
+def ingest_narrative():
+    # 1. Setup Table with source tracking
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS prose_chunks (
+                id SERIAL PRIMARY KEY,
+                content TEXT NOT NULL,
+                embedding VECTOR(384),
+                source_file TEXT
+            );
+        """))
+        conn.commit()
 
-    pdf_files = [f for f in os.listdir(DATA_PATH) if f.endswith(".pdf")]
-    
-    for filename in pdf_files:
-        print(f"--- Processing: {filename} ---")
-        filepath = os.path.join(DATA_PATH, filename)
+    # 2. Process Files
+    raw_path = "data/raw"
+    for filename in os.listdir(raw_path):
+        if not filename.endswith(".pdf"): continue
         
-        try:
-            loader = PyPDFLoader(filepath)
-            docs = loader.load()
-            
-            total_children = 0
-            for doc in docs:
-                # 1. Generate Parent Context Blocks (The "Big Picture" for the LLM)
-                parent_chunks = parent_splitter.split_documents([doc])
-                
-                for p_chunk in parent_chunks:
-                    parent_id = str(uuid.uuid4())
-                    parent_text = p_chunk.page_content
-                    
-                    # 2. Generate Searchable Child Blocks (The "Needle" for ChromaDB)
-                    child_chunks = child_splitter.split_text(parent_text)
-                    
-                    if not child_chunks:
-                        continue
-                        
-                    ids = [str(uuid.uuid4()) for _ in child_chunks]
-                    metadatas = [{
-                        "parent_id": parent_id,
-                        "parent_text": parent_text, 
-                        "source": filename,
-                        "page": doc.metadata.get("page", 0)
-                    } for _ in child_chunks]
-                    
-                    # 3. Commit to ChromaDB
-                    collection.add(
-                        documents=child_chunks,
-                        ids=ids,
-                        metadatas=metadatas
-                    )
-                    total_children += len(child_chunks)
-                    
-            print(f"Success: Linked and indexed {total_children} child vectors for {filename}")
-            
-        except Exception as e:
-            print(f"Failed to process {filename}: {str(e)}")
+        print(f"--- Ingesting Narrative: {filename} ---")
+        loader = PyPDFLoader(os.path.join(raw_path, filename))
+        
+        # We join the whole book into one stream to avoid 'Page Break' fragmentation
+        full_text = " ".join([clean_text(page.page_content) for page in loader.load()])
+        
+        # Split into 1500-char blocks with 300-char overlap
+        # This is the "Prose-Aware" sweet spot
+        chunks = []
+        for i in range(0, len(full_text), 1200): # 1200 step = 300 overlap
+            chunks.append(full_text[i:i + 1500])
+
+        with engine.connect() as conn:
+            for chunk in chunks:
+                if len(chunk) < 200: continue
+                emb = ef([chunk])[0]
+                conn.execute(
+                    text("INSERT INTO prose_chunks (content, embedding, source_file) VALUES (:c, :e, :s)"),
+                    {"c": chunk, "e": emb.tolist(), "s": filename}
+                )
+            conn.commit()
+    print("✅ Narrative Ingestion Complete.")
 
 if __name__ == "__main__":
-    print("Initializing CodexEngine V2 Hierarchical Ingestion...")
-    build_v2_index()
-    print("\nIngestion complete. The V2 Database is primed.")
+    ingest_narrative()
