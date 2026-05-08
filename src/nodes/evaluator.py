@@ -32,17 +32,23 @@ def evaluate_retrieval(state: AgentState) -> dict:
     """
     
     response = llm.invoke(prompt)
+
     try:
         score = float(response.content.strip())
     except:
-        score = 0.5 # Fallback
-    
-    # Logic Lean: Route to 'actor' if score > 0.7, else 'rewrite'
+        score = 0.5 
+
+    # Determine the natural next step based on quality
     next_step = "actor" if score > 0.7 else "rewrite"
-    if state.revision_count >= 3: # Safety break
-        next_step = "actor"
-        
+    
+    # OVERRIDE: If we've looped 3 times, stop the madness
+    if state.revision_count >= 3:
+        return {
+            "critic_score": score, 
+            "next_step": "actor"
+        }
+    
     return {
-        "critic_score": score,
+        "critic_score": score, 
         "next_step": next_step
     }

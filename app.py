@@ -1,79 +1,77 @@
 import streamlit as st
-from src.graph import create_codex_engine
-import time
+from src.graph import app
+from src.state import AgentState
 
-# --- ADWAITA DARK UI CONFIG ---
-st.set_page_config(page_title="CodexEngine V2", page_icon="🏛️", layout="centered")
+# --- Page Config ---
+st.set_page_config(
+    page_title="CodexEngine V2.5", 
+    page_icon="🏛️", 
+    layout="centered"
+)
 
-# Custom CSS for Adwaita-dark feel
-st.markdown("""
-    <style>
-    .stApp { background-color: #1e1e1e; color: #dededa; }
-    [data-testid="stSidebar"] { background-color: #242424; }
-    .stChatMessage { border-radius: 10px; border: 1px solid #353535; margin-bottom: 10px; }
-    code { color: #f6d32d; } /* GNOME yellow for code */
-    </style>
-""", unsafe_allow_html=True)
+st.title("🏛️ CodexEngine V2.5")
+st.caption("Production-Grade Agentic RAG powered by LangGraph & pgvector")
+st.divider()
 
-st.title("🏛️ CodexEngine V2")
-st.caption("Agentic RAG | Hybrid Search | Adwaita Dark")
-
-# Initialize Graph and Session State
-if "agent" not in st.session_state:
-    st.session_state.agent = create_codex_engine()
+# --- Session State Management ---
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.messages = [
+        {"role": "assistant", "content": "Welcome to CodexEngine. What would you like to explore today?"}
+    ]
 
-# --- SIDEBAR: DEV CONSOLE ---
-with st.sidebar:
-    st.header("Settings")
-    if st.button("Clear Conversation"):
-        st.session_state.messages = []
-        st.rerun()
+# Render existing chat history
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# --- Chat Input & Execution ---
+if prompt := st.chat_input("Ask a technical, narrative, or academic question..."):
     
-    st.divider()
-    st.subheader("Agent Debugger")
-    # This will display the most recent node outputs
-    debug_container = st.empty()
-
-# --- CHAT DISPLAY ---
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-
-# --- INPUT & AGENTIC EXECUTION ---
-if prompt := st.chat_input("Ask your documents..."):
+    # 1. Display User Message
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    # 2. Display Assistant Response
     with st.chat_message("assistant"):
-        # The 'Brain' process visible to the user
-        with st.status("Agentic loop initiated...", expanded=True) as status:
-            initial_state = {
-                "initial_query": prompt,
-                "current_query": prompt,
-                "iteration": 0,
-                "context": "",
-                "answer": ""
-            }
-            
-            # Streaming the graph for transparency
-            final_state = initial_state
-            for step in st.session_state.agent.stream(initial_state):
-                for node, data in step.items():
-                    st.write(f"⚙️ Executing: **{node}**")
-                    final_state.update(data) # Update state as we go
-                    
-                    if node == "evaluate" and data.get("route") == "retry":
-                        st.write(f"🔍 *Evaluator:* Context insufficient. Rewriting query to: `{data['current_query']}`")
-            
-            status.update(label="Response Synthesized!", state="complete", expanded=False)
         
-        # Display the Final Answer
-        answer = final_state.get("answer", "Error: No answer generated.")
-        st.markdown(answer)
-        st.session_state.messages.append({"role": "assistant", "content": answer})
+        # The "Thought Trace" Collapsible UI
+        with st.status("🧠 Initializing Agentic Loop...", expanded=True) as status:
+            try:
+                inputs = AgentState(query=prompt)
+                final_answer = ""
+                
+                # Stream the LangGraph execution
+                for output in app.stream(inputs):
+                    for node, state in output.items():
+                        if node == "retrieve":
+                            st.write(f"🔍 **Retrieving:** `{state.get('query', prompt)}`")
+                        elif node == "evaluate":
+                            score = state.get("critic_score", 0.0)
+                            if score >= 0.7:
+                                st.success(f"✅ **Critic Score:** {score}")
+                            else:
+                                st.error(f"❌ **Critic Score:** {score}")
+                        elif node == "rewrite":
+                            st.warning(f"🔄 **Rewriter Pivot:** `{state.get('query', '')}`")
+                        elif node == "actor":
+                            st.info("✍️ **Synthesizing**...")
+                            final_answer = state.get("answer", "")
+
+                status.update(label="Agentic Loop Complete!", state="complete", expanded=False)
+
+            except Exception as e:
+                # Handle the Groq TPD/RPM limit specifically
+                if "rate_limit" in str(e).lower():
+                    error_msg = "📉 **Groq Quota Exhausted.** The daily token limit has been reached. Please try again later."
+                else:
+                    error_msg = f"⚠️ **Engine Error:** {str(e)}"
+                
+                status.update(label="Loop Interrupted", state="error", expanded=True)
+                final_answer = error_msg
         
-        # Update Debugger
-        debug_container.json(final_state)
+        # 3. Render the Final Answer (or Error Message)
+        st.markdown(final_answer)
+        
+    # 4. Save to Session State
+    st.session_state.messages.append({"role": "assistant", "content": final_answer})
