@@ -1,9 +1,9 @@
-from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from src.state import AgentState
 
 def condense_question_node(state: AgentState):
-    # Get history excluding the current message
+    """Resolves pronouns using chat history via Groq."""
     history = state["messages"][:-1]
     
     if not history:
@@ -11,17 +11,19 @@ def condense_question_node(state: AgentState):
 
     prompt = ChatPromptTemplate.from_template("""
         Given the following conversation history and a follow-up question, 
-        rephrase the follow-up to be a standalone question that can be 
-        searched in a database.
+        rephrase the follow-up to be a standalone question.
         
         Chat History: {history}
-        Follow-up: {user_query}
+        Follow-up Question: {user_query}
         Standalone Question:
     """)
     
-    # Standardizing on Llama-3-8b for speed
-    llm = ChatOpenAI(model="llama-3-8b", temperature=0)
+    # Use Groq llama-3.1-8b for fast resolution
+    llm = ChatGroq(model_name="llama-3.1-8b-instant", temperature=0)
     chain = prompt | llm
     
     result = chain.invoke({"history": history, "user_query": state["user_query"]})
+    
+    print(f"\n--- [MEMORY] Resolved Query: {result.content} ---")
+    
     return {"search_query": result.content}
