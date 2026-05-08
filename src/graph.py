@@ -1,41 +1,38 @@
-from langgraph.graph import StateGraph, END
+from langgraph.graph import StateGraph, START, END
 from src.state import AgentState
-from src.nodes.retriever import retrieve_parent_context
-from src.nodes.evaluator import evaluate_node
-from src.nodes.actor import actor_node 
+from src.nodes.retriever import retrieve_hybrid_context
+from src.nodes.evaluator import evaluate_retrieval
+from src.nodes.rewriter import rewrite_query
+from src.nodes.actor import generate_answer
 
-# The routing function reads the state set by the Evaluator
-def route_decision(state):
-    if state["route"] == "generate":
-        return "generate"
-    else:
-        return "retrieve"
-
-def create_codex_engine():
+def create_graph():
+    # 1. Initialize Graph with our Pydantic State
     workflow = StateGraph(AgentState)
 
-    # 1. Add all three nodes
-    workflow.add_node("retrieve", retrieve_parent_context)
-    workflow.add_node("evaluate", evaluate_node)
-    workflow.add_node("generate", actor_node)
+    # 2. Add Nodes
+    workflow.add_node("retrieve", retrieve_hybrid_context)
+    workflow.add_node("evaluate", evaluate_retrieval)
+    workflow.add_node("rewrite", rewrite_query)
+    workflow.add_node("actor", generate_answer)
 
-    # 2. Define the Flow
-    workflow.set_entry_point("retrieve")
-    
-    # After retrieval, ALWAYS evaluate the context
+    # 3. Build Edges (The Logic Map)
+    workflow.add_edge(START, "retrieve")
     workflow.add_edge("retrieve", "evaluate")
-    
-    # Conditional Fork: The Graph decides where to go based on the Evaluator's decision
+
+    # Conditional Routing from Evaluator
     workflow.add_conditional_edges(
-        "evaluate", 
-        route_decision, 
+        "evaluate",
+        lambda x: x.next_step,
         {
-            "generate": "generate",  # Go to the Actor
-            "retrieve": "retrieve"   # Loop back to the Retriever
+            "actor": "actor",
+            "rewrite": "rewrite"
         }
     )
-    
-    # After generation, end the process
-    workflow.add_edge("generate", END)
+
+    workflow.add_edge("rewrite", "retrieve")
+    workflow.add_edge("actor", END)
 
     return workflow.compile()
+
+# Compilation
+app = create_graph()
