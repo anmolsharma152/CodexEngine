@@ -1,7 +1,10 @@
 import os
 from sqlalchemy import create_engine, text
+from dotenv import load_dotenv
 from src.state import AgentState
 from src.utils import get_embedding_function
+
+load_dotenv()
 
 engine = create_engine(os.getenv("DB_URL"))
 ef = get_embedding_function()
