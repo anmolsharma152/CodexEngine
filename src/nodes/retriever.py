@@ -9,15 +9,14 @@ engine = create_engine(os.getenv("DB_URL"))
 ef = get_embedding_function()
 
 def retrieve_hybrid_context(state: AgentState) -> dict:
-    # Use 'query' for first pass, or a potential 'rewritten_query' field if added
     current_search = state.query
     print(f"\n--- [RETRIEVING] Search Term: {current_search} ---")
     
     query_emb = ef([current_search])[0]
     
-    # We use Cosine Similarity (<=>) for the vector match
+    # NEW: Selecting metadata along with content
     sql = text("""
-        SELECT content 
+        SELECT content, metadata 
         FROM prose_chunks 
         ORDER BY embedding <=> :emb 
         LIMIT 5;
@@ -25,7 +24,13 @@ def retrieve_hybrid_context(state: AgentState) -> dict:
     
     with engine.connect() as conn:
         results = conn.execute(sql, {"emb": str(query_emb.tolist())})
-        context_chunks = [row[0] for row in results]
+        context_chunks = []
+        for row in results:
+            content = row[0]
+            # Assuming your metadata column stores a dict/JSON with a 'source' key
+            source = row[1].get("source", "Unknown Document") if row[1] else "Unknown Document"
+            # Format the chunk so the LLM sees the source attached to the text
+            context_chunks.append(f"[Source: {source}] {content}")
 
     return {
         "context": context_chunks,

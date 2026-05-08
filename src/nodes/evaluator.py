@@ -6,7 +6,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Initialize the 'Judge' model
-llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
+# Get model from env, fallback to 8b
+model = os.getenv("GROQ_MODEL_NAME", "llama-3.1-8b-instant")
+llm = ChatGroq(model_name=model, temperature=0)
 
 def evaluate_retrieval(state: AgentState) -> dict:
     """

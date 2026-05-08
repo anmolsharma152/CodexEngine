@@ -5,8 +5,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Using 70b for the final synthesis to ensure the "Why" is handled with nuance
-llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0.3)
+# Get model from env, fallback to 8b
+model = os.getenv("GROQ_MODEL_NAME", "llama-3.1-8b-instant")
+llm = ChatGroq(model_name=model, temperature=0.3)
 
 def generate_answer(state: AgentState) -> dict:
     # Logic Lean: Match the tone to the query
@@ -19,17 +20,13 @@ def generate_answer(state: AgentState) -> dict:
     You are a {role} for the CodexEngine.
     
     QUERY: {state.query}
-    CONTEXT: {" ".join(state.context)}
+    CONTEXT: {"\n\n".join(state.context)}
     
     INSTRUCTIONS:
     - Focus on {focus}.
-    - Do NOT apologize for a lack of characters if the query is technical.
+    - Every claim must be followed by its source name in brackets, e.g., [Source: filename.pdf].
     - Provide a direct answer based ONLY on the provided context.
     """
         
     response = llm.invoke(prompt)
-    
-    return {
-        "answer": response.content,
-        "next_step": "__end__"
-    }
+    return {"answer": response.content, "next_step": "__end__"}
