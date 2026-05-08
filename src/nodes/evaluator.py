@@ -1,52 +1,20 @@
-import os
 from langchain_groq import ChatGroq
 from src.state import AgentState
-from dotenv import load_dotenv
 
-load_dotenv()
+llm = ChatGroq(model_name="llama-3.1-8b-instant", temperature=0)
 
-# Initialize the 'Judge' model
-# Get model from env, fallback to 8b
-model = os.getenv("GROQ_MODEL_NAME", "llama-3.1-8b-instant")
-llm = ChatGroq(model_name=model, temperature=0)
-
-
-def evaluate_retrieval(state: AgentState) -> dict:
-    """
-    Evaluates if the retrieved prose chunks contain the 'Why'.
-    """
-    print(f"\n--- [EVALUATING] Scoring {len(state.context)} chunks ---")
-
-    context_str = "\n\n".join(state.context)
-
+def evaluate_retrieval(state: AgentState):
     prompt = f"""
-    You are an Evaluation Critic. Grade the following context based on its ability 
-    to answer the user's specific query.
-    
-    QUERY: {state.query}
-    CONTEXT: {context_str}
-    
-    Provide a deterministic score between 0.0 and 1.0.
-    1.0 = Directly and fully answers the core intent of the query.
-    0.5 = Tangentially related, but misses the core question.
-    0.0 = Totally irrelevant noise.
-    
-    Return ONLY the numerical score.
+    Grade this context based on its ability to answer the query.
+    QUERY: {state['search_query']}
+    CONTEXT: {state['context']}
+    Return ONLY a score between 0.0 and 1.0.
     """
-
     response = llm.invoke(prompt)
-
     try:
         score = float(response.content.strip())
     except:
         score = 0.5
 
-    # Determine the natural next step based on quality
-    next_step = "actor" if score > 0.7 else "rewrite"
-
-    # OVERRIDE: If we've looped 3 times, stop the madness
-    if state.revision_count >= 3:
-        return {"critic_score": score, "next_step": "actor"}
-
+    next_step = "actor" if score > 0.7 or state["revision_count"] >= 3 else "rewrite"
     return {"critic_score": score, "next_step": next_step}
-

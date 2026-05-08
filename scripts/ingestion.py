@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, text
 from src.utils import get_embedding_function
 from langchain_community.document_loaders import PyPDFLoader
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 engine = create_engine(os.getenv("DB_URL"))
@@ -18,7 +19,7 @@ def clean_text(t):
 
 
 def ingest_narrative():
-    # 1. Setup Table with source tracking
+    # 1. Ensure table has the metadata column (matching our ALTER TABLE)
     with engine.connect() as conn:
         conn.execute(
             text("""
@@ -55,13 +56,14 @@ def ingest_narrative():
                 if len(chunk) < 200:
                     continue
                 emb = ef([chunk])[0]
+                # Pass the source as a JSON string for the JSONB column
+                meta_data = {"source": filename}
                 conn.execute(
-                    text(
-                        "INSERT INTO prose_chunks (content, embedding, source_file) VALUES (:c, :e, :s)"
-                    ),
-                    {"c": chunk, "e": emb.tolist(), "s": filename},
+                    text("INSERT INTO prose_chunks (content, embedding, metadata) VALUES (:c, :e, :m)"),
+                    {"c": chunk, "e": str(emb.tolist()), "m": json.dumps(meta_data)}
                 )
             conn.commit()
+            
     print("✅ Narrative Ingestion Complete.")
 
 
