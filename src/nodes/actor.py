@@ -1,31 +1,35 @@
 import os
-from dotenv import load_dotenv
 from langchain_groq import ChatGroq
-from langchain_core.prompts import ChatPromptTemplate
+from src.state import AgentState
+from dotenv import load_dotenv
 
 load_dotenv()
 
-def actor_node(state):
+# Using 70b for the final synthesis to ensure the "Why" is handled with nuance
+llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0.3)
+
+def generate_answer(state: AgentState) -> dict:
+    # Logic Lean: Match the tone to the query
+    is_academic = any(term in state.query.lower() for term in ["framework", "define", "concept", "theory", "ssl", "error rate"])
+    
+    role = "Technical Analyst" if is_academic else "Narrative Analyst"
+    focus = "technical accuracy and definitions" if is_academic else "character motivation and plot triggers"
+
+    prompt = f"""
+    You are a {role} for the CodexEngine.
+    
+    QUERY: {state.query}
+    CONTEXT: {" ".join(state.context)}
+    
+    INSTRUCTIONS:
+    - Focus on {focus}.
+    - Do NOT apologize for a lack of characters if the query is technical.
+    - Provide a direct answer based ONLY on the provided context.
     """
-    LangGraph Node: Synthesizes the final answer using 
-    the expanded parent context.
-    """
-    print("--- AGENTIC ACTOR: GENERATING RESPONSE ---")
+        
+    response = llm.invoke(prompt)
     
-    llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
-    
-    prompt = ChatPromptTemplate.from_template("""
-    You are the CodexEngine V2 Core. Use the following EXPANDED context to answer the user's question. 
-    
-    Context:
-    {context}
-    
-    Question: {query}
-    
-    Instruction: Provide a detailed, technical response. If the information is missing, admit it.
-    """)
-    
-    chain = prompt | llm
-    response = chain.invoke({"context": state["context"], "query": state["initial_query"]})
-    
-    return {"answer": response.content}
+    return {
+        "answer": response.content,
+        "next_step": "__end__"
+    }

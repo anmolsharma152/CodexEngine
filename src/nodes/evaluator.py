@@ -1,43 +1,48 @@
 import os
-from dotenv import load_dotenv
 from langchain_groq import ChatGroq
-from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field
+from src.state import AgentState
+from dotenv import load_dotenv
 
 load_dotenv()
 
-# Define the strict output format we want from the LLM
-class GraderOutput(BaseModel):
-    is_relevant: str = Field(description="'yes' if context contains the answer, 'no' if it does not.")
-    new_query: str = Field(description="If 'no', write a better, highly specific search query to find the missing info. If 'yes', leave empty.")
+# Initialize the 'Judge' model
+llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
 
-def evaluate_node(state):
-    print("\n--- [EVALUATOR] GRADING CONTEXT ---")
+def evaluate_retrieval(state: AgentState) -> dict:
+    """
+    Evaluates if the retrieved prose chunks contain the 'Why'.
+    """
+    print(f"\n--- [EVALUATING] Scoring {len(state.context)} chunks ---")
     
-    # Initialize the LLM and bind it to our Pydantic schema
-    # Quick change in src/nodes/evaluator.py
-    llm = ChatGroq(model_name="llama-3.1-8b-instant", temperature=0)
-    structured_llm = llm.with_structured_output(GraderOutput)
+    context_str = "\n\n".join(state.context)
     
-    prompt = ChatPromptTemplate.from_template("""
-    You are a strict retrieval evaluator. Does the following context contain the exact information needed to answer the question?
+    prompt = f"""
+    You are a Narrative Critic. Grade the following context based on its ability 
+    to answer the user's specific query.
     
-    Question: {query}
+    QUERY: {state.query}
+    CONTEXT: {context_str}
     
-    Context: {context}
+    Provide a deterministic score between 0.0 and 1.0.
+    1.0 = Explicitly answers the 'Why' and 'Event Trigger'.
+    0.5 = Mentions the characters/setting but lacks motivation.
+    0.0 = Totally irrelevant noise.
     
-    If it does NOT contain the answer, rewrite the question into a better search query that targets specific keywords or alternative phrasing.
-    """)
+    Return ONLY the numerical score.
+    """
     
-    chain = prompt | structured_llm
-    result = chain.invoke({"query": state["initial_query"], "context": state["context"]})
+    response = llm.invoke(prompt)
+    try:
+        score = float(response.content.strip())
+    except:
+        score = 0.5 # Fallback
     
-    # Increment the loop counter
-    iteration = state.get("iteration", 0) + 1
-    
-    if result.is_relevant.lower() == 'yes' or iteration >= 3:
-        print(f"  -> ✅ Context Approved (or max tries hit: {iteration}/3). Routing to Generation.")
-        return {"route": "generate", "iteration": iteration}
-    else:
-        print(f"  -> ❌ Context Failed. Rewriting query to: '{result.new_query}'")
-        return {"current_query": result.new_query, "route": "retry", "iteration": iteration}
+    # Logic Lean: Route to 'actor' if score > 0.7, else 'rewrite'
+    next_step = "actor" if score > 0.7 else "rewrite"
+    if state.revision_count >= 3: # Safety break
+        next_step = "actor"
+        
+    return {
+        "critic_score": score,
+        "next_step": next_step
+    }
