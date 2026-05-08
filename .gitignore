@@ -6,6 +6,7 @@ chroma_db/
 *.pyc
 .DS_Store
 chat_history.json
+.streamlit/
 archive/
 data/
 archives/chroma_db_old/
