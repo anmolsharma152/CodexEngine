@@ -4,7 +4,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import os
 import re
 from sqlalchemy import create_engine, text
-from src.utils import get_embedding_function
+from src.repositories.utils import get_embedding_function
 from langchain_community.document_loaders import PyPDFLoader
 from dotenv import load_dotenv
 import json
@@ -59,11 +59,13 @@ def ingest_narrative():
                 # Pass the source as a JSON string for the JSONB column
                 meta_data = {"source": filename}
                 conn.execute(
-                    text("INSERT INTO prose_chunks (content, embedding, metadata) VALUES (:c, :e, :m)"),
-                    {"c": chunk, "e": str(emb.tolist()), "m": json.dumps(meta_data)}
+                    text(
+                        "INSERT INTO prose_chunks (content, embedding, metadata) VALUES (:c, :e, :m)"
+                    ),
+                    {"c": chunk, "e": str(emb.tolist()), "m": json.dumps(meta_data)},
                 )
             conn.commit()
-            
+
     print("✅ Narrative Ingestion Complete.")
 
 
