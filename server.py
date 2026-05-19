@@ -14,6 +14,7 @@ DB_URL = os.environ["DB_URL"]
 from src.state import AgentState
 from src.nodes.nodes import *
 
+
 # 1. Define the Graph (Now accepts a checkpointer)
 def create_graph(checkpointer):
     workflow = StateGraph(AgentState)
@@ -45,10 +46,10 @@ async def lifespan(app: FastAPI):
     async with AsyncPostgresSaver.from_conn_string(DB_URL) as checkpointer:
         # Automatically creates the 'checkpoints' tables in your DB if missing
         await checkpointer.setup()
-        
+
         # Compile graph and attach it to the running FastAPI app state
         app.state.agent_engine = create_graph(checkpointer)
-        
+
         yield
     # Shutdown: Pool closes automatically
 

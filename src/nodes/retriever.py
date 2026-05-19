@@ -25,4 +25,3 @@ def retrieve_hybrid_context(state: AgentState):
         chunks = [f"[Source: {r[1].get('source')}] {r[0]}" for r in results]
 
     return {"context": "\n\n".join(chunks), "next_step": "evaluate"}
-

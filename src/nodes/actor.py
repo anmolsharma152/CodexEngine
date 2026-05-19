@@ -45,4 +45,3 @@ def generate_answer(state: AgentState):
     response = llm.invoke(prompt)
 
     return {"response": response.content}
-

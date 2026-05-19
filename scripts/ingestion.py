@@ -71,4 +71,3 @@ def ingest_narrative():
 
 if __name__ == "__main__":
     ingest_narrative()
-

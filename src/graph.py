@@ -1,6 +1,7 @@
 from langgraph.graph import StateGraph, START, END
 from src.state import AgentState
-from src.nodes.nodes import * # This works because of your nodes.py exports
+from src.nodes.nodes import *  # This works because of your nodes.py exports
+
 
 def create_graph():
     workflow = StateGraph(AgentState)
@@ -17,13 +18,12 @@ def create_graph():
     workflow.add_edge("retrieve", "evaluate")
 
     workflow.add_conditional_edges(
-        "evaluate",
-        lambda x: x["next_step"],
-        {"actor": "actor", "rewrite": "rewrite"}
+        "evaluate", lambda x: x["next_step"], {"actor": "actor", "rewrite": "rewrite"}
     )
     workflow.add_edge("rewrite", "retrieve")
     workflow.add_edge("actor", END)
 
     return workflow.compile()
+
 
 app = create_graph()
