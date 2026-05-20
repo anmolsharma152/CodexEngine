@@ -4,6 +4,9 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, START, END
 
+import json
+from fastapi.responses import StreamingResponse
+
 from contextlib import asynccontextmanager
 from psycopg_pool import AsyncConnectionPool
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -77,12 +80,10 @@ class ChatRequest(BaseModel):
     thread_id: str  # No more manual history array!
 
 
-@app.post("/chat")
-async def chat_endpoint(request: ChatRequest):
-    # Pass the thread_id to LangGraph so it knows which memory to load/save
+@app.post("/chat/stream")
+async def chat_stream_endpoint(request: ChatRequest):
     config = {"configurable": {"thread_id": request.thread_id}}
 
-    # We only inject the newest message. The checkpointer handles the rest natively.
     initial_state = {
         "user_query": request.message,
         "search_query": request.message,
@@ -93,10 +94,38 @@ async def chat_endpoint(request: ChatRequest):
         "response": "",
     }
 
-    try:
-        # Run the graph using the engine stored in the app state
-        final_state = await app.state.agent_engine.ainvoke(initial_state, config)
-        return {"response": final_state["response"]}
-    except Exception as e:
-        # Catch Groq rate limits, timeouts, or graph failures cleanly
-        return {"error": f"Engine execution failed or timed out: {str(e)}"}
+    async def event_generator():
+        try:
+            # Wiretap the LangGraph execution using version="v2"
+            async for event in app.state.agent_engine.astream_events(
+                initial_state, config, version="v2"
+            ):
+                kind = event["event"]
+
+                # 1. Stream Node Transitions (System Thoughts)
+                node_name = event.get("name", "unknown node")
+                if kind == "on_chain_start" and node_name in [
+                    "router",
+                    "condense",
+                    "retrieve",
+                    "evaluate",
+                    "rewrite",
+                    "actor",
+                ]:
+                    yield f"data: {json.dumps({'type': 'status', 'content': f'Agent routing to {node_name}...'})}\n\n"
+
+                # 2. Stream LLM Tokens (The actual answer)
+                elif kind == "on_chat_model_stream":
+                    chunk = event["data"]["chunk"].content
+                    if chunk:
+                        yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+
+            # Signal the frontend that the stream is complete
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        except Exception as e:
+            # Safely catch and stream any pipeline explosions
+            yield f"data: {json.dumps({'type': 'error', 'content': f'Engine failure: {str(e)}'})}\n\n"
+
+    # Return the generator wrapped in FastAPI's SSE format
+    return StreamingResponse(event_generator(), media_type="text/event-stream")

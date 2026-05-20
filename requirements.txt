@@ -1,7 +1,6 @@
 # --- ASGI Server & Web Framework ---
-fastapi>=0.110.0
-uvicorn>=0.28.0
 pydantic>=2.6.0
+fastapi[standard]>=0.112.0
 
 # --- LangGraph Orchestration & Stateful Memory ---
 langgraph>=0.0.30
