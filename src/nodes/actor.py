@@ -69,4 +69,4 @@ def generate_answer(state: AgentState):
     print(f"\n--- [ACTOR] Generating Response for {intent.upper()} Mode ---")
     response = llm.invoke(prompt)
 
-    return {"response": response.content}
+    return {"response": response.content, "messages": [("assistant", response.content)]}

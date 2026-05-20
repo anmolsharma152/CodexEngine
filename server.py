@@ -93,7 +93,10 @@ async def chat_endpoint(request: ChatRequest):
         "response": "",
     }
 
-    # Run the graph using the engine stored in the app state
-    final_state = await app.state.agent_engine.ainvoke(initial_state, config)
-
-    return {"response": final_state["response"]}
+    try:
+        # Run the graph using the engine stored in the app state
+        final_state = await app.state.agent_engine.ainvoke(initial_state, config)
+        return {"response": final_state["response"]}
+    except Exception as e:
+        # Catch Groq rate limits, timeouts, or graph failures cleanly
+        return {"error": f"Engine execution failed or timed out: {str(e)}"}

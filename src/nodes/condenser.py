@@ -20,7 +20,7 @@ def condense_question_node(state: AgentState):
     """)
 
     # Use Groq llama-3.1-8b for fast resolution
-    llm = ChatGroq(model_name="llama-3.1-8b-instant", temperature=0)
+    llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
     chain = prompt | llm
 
     result = chain.invoke({"history": history, "user_query": state["user_query"]})
