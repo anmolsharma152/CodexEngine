@@ -1,6 +1,6 @@
-import os
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
+
 from src.state import AgentState
 
 load_dotenv()
@@ -48,16 +48,15 @@ def generate_answer(state: AgentState):
         === THE TECHNICAL QUESTION ===
         User: {state["user_query"]}
         """
-
     else:  # strict research mode
         prompt = f"""
-        You are CodexEngine, a precise, strict corporate RAG analyst. You must answer the user's intent using ONLY the facts provided in the RETRIEVED CONTEXT section below.
-
-        CRITICAL LAWS FOR RESEARCH MODE:
-        1. Base your response strictly and exclusively on the RETRIEVED CONTEXT.
-        2. If the RETRIEVED CONTEXT is empty, irrelevant, or does not contain the specific answer to the user's query, you MUST reply with exactly this text and nothing else:
+        You are CodexEngine, a precise corporate RAG analyst. 
+        
+        CRITICAL LAWS:
+        1. Base your response primarily on the RETRIEVED CONTEXT below.
+        2. COGNITIVE EXCEPTION: If the user is asking about the state of the current conversation, session rules you were given, or their own personal info, use the CHAT HISTORY to answer completely.
+        3. If it is a purely factual document search and both the RETRIEVED CONTEXT and CHAT HISTORY are completely empty or lack the answer, reply with exactly:
            "I don't have enough specific information in my database to answer that accurately."
-        3. Do not utilize your general world pre-trained knowledge to fill in gaps. If the database chunks don't say it, you don't know it.
 
         === CHAT HISTORY ===
         {history_text}

@@ -1,6 +1,6 @@
-import os
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
+
 from src.state import AgentState
 
 load_dotenv()
@@ -15,9 +15,9 @@ def analyze_intent(state: AgentState):
     prompt = f"""
     You are a highly efficient routing system for an AI assistant. Classify the following user query into exactly ONE of these three categories:
     
-    1. 'casual': Greetings, playful talk, small talk, or questions about the user's name/preferences/history.
-    2. 'explanatory': General world knowledge, abstract concepts, coding help, or brainstorming that does NOT require searching a specific local database.
-    3. 'research': Deep fact-based questions, data analysis, or queries that require retrieving specific documents, citations, or technical PDFs.
+    1. 'casual': Greetings, small talk, OR explicit statements where the user is telling you personal facts, system setups, or rules to remember for the session. Also includes questions about the user's own name, preferences, or conversation history.
+    2. 'explanatory': General world knowledge, abstract concepts, math, or coding help that can be answered purely using pre-trained internal logic without a database.
+    3. 'research': Queries asking for specific facts, metrics, citations, figures, or data located within indexed documents, books, papers, or technical manuals.
     
     User Query: "{state["user_query"]}"
     
