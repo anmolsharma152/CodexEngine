@@ -13,7 +13,7 @@ ef = get_embedding_function()
 def retrieve_hybrid_context(state: AgentState):
     # Use the mutable search_query
     current_search = state["search_query"]
-    query_emb = ef([current_search])[0]
+    query_emb = ef.embed_query(current_search)
 
     sql = text("""
         SELECT content, metadata FROM prose_chunks 
@@ -21,7 +21,7 @@ def retrieve_hybrid_context(state: AgentState):
     """)
 
     with engine.connect() as conn:
-        results = conn.execute(sql, {"emb": str(query_emb.tolist())})
+        results = conn.execute(sql, {"emb": str(query_emb)})
         chunks = [f"[Source: {r[1].get('source')}] {r[0]}" for r in results]
 
     return {"context": "\n\n".join(chunks), "next_step": "evaluate"}
