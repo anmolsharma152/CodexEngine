@@ -1,22 +1,17 @@
+import os
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from src.state import AgentState
 
-# 1. Load environment variables
 load_dotenv()
-
-# 2. Initialize Llama 3.3 70B
 llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.3)
 
 
 def generate_answer(state: AgentState):
-    # Extract messages. LangGraph stores them as tuples or BaseMessage objects.
-    # We want everything EXCEPT the latest message to form our history block.
     messages = state.get("messages", [])
     history_text = "No prior history."
 
     if len(messages) > 1:
-        # Format previous messages cleanly for the LLM
         history_lines = []
         for m in messages[:-1]:
             role = m[0] if isinstance(m, tuple) else m.type
@@ -24,24 +19,55 @@ def generate_answer(state: AgentState):
             history_lines.append(f"{role.capitalize()}: {content}")
         history_text = "\n".join(history_lines)
 
-    # Dictionary access for V3 TypedDict state
-    prompt = f"""
-    You are CodexEngine, a precise and conversational RAG-based analyst. 
-    
-    === CHAT HISTORY ===
-    {history_text}
-    
-    === CURRENT TURN ===
-    LATEST USER INTENT: {state["user_query"]}
-    RETRIEVED CONTEXT: {state["context"]}
-    
-    === INSTRUCTIONS ===
-    1. CONVERSATIONAL AWARENESS: If the LATEST USER INTENT is conversational, a greeting, or references previous messages (e.g., "What is my name?", "Tell me more about that"), use the CHAT HISTORY to answer naturally.
-    2. FACTUAL GROUNDING: If the user is asking a specific knowledge question, you MUST base your answer strictly on the RETRIEVED CONTEXT. 
-    3. HALLUCINATION PREVENTION: If it is a factual question and the RETRIEVED CONTEXT is irrelevant or empty, do NOT attempt to answer. Simply state: "I don't have enough specific information in my database to answer that accurately."
-    """
+    intent = state.get("intent", "research")
 
-    print("\n--- [ACTOR] Generating Final Response ---")
+    # Construct entirely isolated operational payloads
+    if intent == "casual":
+        prompt = f"""
+        You are CodexEngine, chatting with Anmol. Be warm, friendly, witty, and highly conversational.
+        Use the CHAT HISTORY to maintain context about who he is and his preferences. Keep answers snappy and organic.
+        Do NOT mention databases, contexts, or missing files. Just talk to him like a peer.
+
+        === CHAT HISTORY ===
+        {history_text}
+
+        === CURRENT USER INPUT ===
+        Anmol: {state["user_query"]}
+        """
+
+    elif intent == "explanatory":
+        prompt = f"""
+        You are CodexEngine, a brilliant technical educator and world-class AI developer.
+        Answer the user's query comprehensively using your vast internal pre-trained knowledge base.
+        Explain concepts clearly, use rich markdown, provide clean code snippets if applicable, and maintain an informative tone.
+        You do not need to rely on or look for local database citations for this mode.
+
+        === CHAT HISTORY ===
+        {history_text}
+
+        === THE TECHNICAL QUESTION ===
+        User: {state["user_query"]}
+        """
+
+    else:  # strict research mode
+        prompt = f"""
+        You are CodexEngine, a precise, strict corporate RAG analyst. You must answer the user's intent using ONLY the facts provided in the RETRIEVED CONTEXT section below.
+
+        CRITICAL LAWS FOR RESEARCH MODE:
+        1. Base your response strictly and exclusively on the RETRIEVED CONTEXT.
+        2. If the RETRIEVED CONTEXT is empty, irrelevant, or does not contain the specific answer to the user's query, you MUST reply with exactly this text and nothing else:
+           "I don't have enough specific information in my database to answer that accurately."
+        3. Do not utilize your general world pre-trained knowledge to fill in gaps. If the database chunks don't say it, you don't know it.
+
+        === CHAT HISTORY ===
+        {history_text}
+
+        === CURRENT INTENT ===
+        LATEST USER QUERY: {state["user_query"]}
+        RETRIEVED CONTEXT FROM DATABASE: {state["context"]}
+        """
+
+    print(f"\n--- [ACTOR] Generating Response for {intent.upper()} Mode ---")
     response = llm.invoke(prompt)
 
     return {"response": response.content}

@@ -15,43 +15,56 @@ from src.state import AgentState
 from src.nodes.nodes import *
 
 
-# 1. Define the Graph (Now accepts a checkpointer)
+# 1. Define the Graph (Now with Intent Routing)
 def create_graph(checkpointer):
     workflow = StateGraph(AgentState)
 
+    # Add all nodes including the router
+    workflow.add_node("router", analyze_intent)
     workflow.add_node("condense", condense_question_node)
     workflow.add_node("retrieve", retrieve_hybrid_context)
     workflow.add_node("evaluate", evaluate_retrieval)
     workflow.add_node("rewrite", rewrite_query)
     workflow.add_node("actor", generate_answer)
 
-    workflow.add_edge(START, "condense")
+    # Point START directly to the traffic cop
+    workflow.add_edge(START, "router")
+
+    # Dynamic Routing Condition
+    def route_after_analysis(state: AgentState):
+        if state.get("intent") == "research":
+            return "condense"  # Hit the heavy PDF processing pipeline
+        else:
+            return "actor"  # Casual & Explanatory bypass the DB completely
+
+    workflow.add_conditional_edges(
+        "router", route_after_analysis, {"condense": "condense", "actor": "actor"}
+    )
+
+    # Standard RAG Sub-flow (only runs if routed to 'condense')
     workflow.add_edge("condense", "retrieve")
     workflow.add_edge("retrieve", "evaluate")
-
     workflow.add_conditional_edges(
         "evaluate", lambda x: x["next_step"], {"actor": "actor", "rewrite": "rewrite"}
     )
     workflow.add_edge("rewrite", "retrieve")
+
+    # Exit point
     workflow.add_edge("actor", END)
 
-    # Compile the graph WITH the PostgresSaver
     return workflow.compile(checkpointer=checkpointer)
 
 
 # 2. Database & App Lifespan Management
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Create connection pool and checkpointer
-    async with AsyncPostgresSaver.from_conn_string(DB_URL) as checkpointer:
-        # Automatically creates the 'checkpoints' tables in your DB if missing
+    # LangGraph uses native psycopg; strip out the SQLAlchemy driver flag if present
+    checkpointer_url = DB_URL.replace("postgresql+psycopg://", "postgresql://")
+
+    async with AsyncPostgresSaver.from_conn_string(checkpointer_url) as checkpointer:
         await checkpointer.setup()
-
-        # Compile graph and attach it to the running FastAPI app state
         app.state.agent_engine = create_graph(checkpointer)
-
         yield
-    # Shutdown: Pool closes automatically
 
 
 # 3. Initialize FastAPI with the lifespan
@@ -77,7 +90,6 @@ async def chat_endpoint(request: ChatRequest):
         "context": "",
         "critic_score": 0.0,
         "revision_count": 0,
-        "next_step": "condense",
         "response": "",
     }
 

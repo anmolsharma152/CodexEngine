@@ -21,6 +21,7 @@ class AgentState(TypedDict):
     context: str
 
     # 3. V2.5 Guardrails (Keeping these!)
+    intent: str
     critic_score: float
     revision_count: int
     next_step: str
