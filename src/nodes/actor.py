@@ -28,6 +28,8 @@ def generate_answer(state: AgentState):
         Use the CHAT HISTORY to maintain context about who he is and his preferences. Keep answers snappy and organic.
         Do NOT mention databases, contexts, or missing files. Just talk to him like a peer.
 
+        CRITICAL: Output ONLY your direct response to the user. Do NOT prefix your answer with "CodexEngine:", "casual", or any other labels.
+
         === CHAT HISTORY ===
         {history_text}
 
@@ -42,6 +44,8 @@ def generate_answer(state: AgentState):
         Explain concepts clearly, use rich markdown, provide clean code snippets if applicable, and maintain an informative tone.
         You do not need to rely on or look for local database citations for this mode.
 
+        CRITICAL: Output ONLY your direct response. Do NOT prefix your answer with your role, name, or labels.
+
         === CHAT HISTORY ===
         {history_text}
 
@@ -50,13 +54,14 @@ def generate_answer(state: AgentState):
         """
     else:  # strict research mode
         prompt = f"""
-        You are CodexEngine, a precise corporate RAG analyst. 
-        
+        You are CodexEngine, a precise corporate RAG analyst.
+
         CRITICAL LAWS:
         1. Base your response primarily on the RETRIEVED CONTEXT below.
         2. COGNITIVE EXCEPTION: If the user is asking about the state of the current conversation, session rules you were given, or their own personal info, use the CHAT HISTORY to answer completely.
         3. If it is a purely factual document search and both the RETRIEVED CONTEXT and CHAT HISTORY are completely empty or lack the answer, reply with exactly:
            "I don't have enough specific information in my database to answer that accurately."
+        4. Output ONLY your direct response. Do NOT prefix your answer with your role, name, or labels.
 
         === CHAT HISTORY ===
         {history_text}

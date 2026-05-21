@@ -6,6 +6,7 @@ from langgraph.graph import StateGraph, START, END
 
 import json
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from contextlib import asynccontextmanager
 from psycopg_pool import AsyncConnectionPool
@@ -72,6 +73,16 @@ async def lifespan(app: FastAPI):
 
 # 3. Initialize FastAPI with the lifespan
 app = FastAPI(title="CodexEngine V3 API", lifespan=lifespan)
+
+# --- HARDENED CORS BLOCK ---
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # Locked down to Next.js only
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+# ---------------------------
 
 
 # 4. API Infrastructure
