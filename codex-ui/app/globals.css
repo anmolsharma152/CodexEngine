@@ -25,3 +25,30 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@keyframes gemini-pulse {
+  0%, 100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+@keyframes gemini-gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.gemini-thinking {
+  background: linear-gradient(-45deg, #1e293b, #3b82f6, #8b5cf6, #ec4899, #1e293b);
+  background-size: 400% 400%;
+  animation: gemini-gradient 3s ease infinite, gemini-pulse 2s ease-in-out infinite;
+}
