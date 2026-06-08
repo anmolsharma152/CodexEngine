@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CodexEngine • Cognitive Operating System",
+  title: "CodexEngine",
   description: "Enterprise stateful RAG and multi-agent retrieval system",
 };
 

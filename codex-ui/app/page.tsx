@@ -496,7 +496,7 @@ export default function Home() {
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-500">
               <h2 className="text-3xl font-semibold text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-500 tracking-tight mb-3">
-                CodexEngine V3
+                CodexEngine V4
               </h2>
               <p className="text-sm font-mono text-gray-500">
                 Agentic RAG Pipeline is ready.
@@ -510,7 +510,7 @@ export default function Home() {
                   className={`flex w-full ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`rounded-2xl p-6 transition-all backdrop-blur-md ${
+                    className={`rounded-2xl p-6 transition-all backdrop-blur-md text-sm md:text-[15px] ${
                       msg.role === "user"
                         ? "bg-white/5 border border-white/10 text-white max-w-[75%]"
                         : "bg-black/20 border border-white/5 text-gray-300 max-w-[90%]"
@@ -705,7 +705,7 @@ export default function Home() {
             )}
           </form>
           <div className="text-center mt-4 text-[10px] text-gray-600 font-mono uppercase tracking-widest">
-            V3.0 Architecture • AsyncPostgres Active
+            V4.0 Architecture • AsyncPostgres Active
           </div>
         </div>
       </main>
