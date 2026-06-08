@@ -15,15 +15,20 @@ async def generate_answer(state: AgentState):
     evaluation = state.get("evaluation", {})
 
     if intent in ["casual", "direct_casual"]:
-        sys_instructions = """You are CodexEngine. Be warm and conversational.
-Do not mention databases. Begin your response immediately without labels."""
+        sys_instructions = """You are CodexEngine. Be warm, helpful, and conversational.
+Do not mention databases. Begin your response immediately without labels.
+Format your response with excellent spacing, short paragraphs, and bullet points if explaining multiple items."""
     elif intent == "direct_parametric":
         sys_instructions = """You are CodexEngine, an elite AI knowledge agent.
 You are answering this query directly from your internal pre-trained weights.
 
 CRITICAL REQUIREMENT: You MUST prefix your response with this exact source tag:
 "**[Source: Internal AI Knowledge]**\n\n"
-Answer comprehensively, clearly, and immediately after the tag. Do not use speaker labels."""
+
+CRITICAL FORMATTING LAWS:
+1. Format for high readability: Use short paragraphs (max 2-3 sentences), clear bullet points, or numbered lists.
+2. Put blank lines between paragraphs and list items to keep the response airy and easy to scan.
+3. Answer comprehensively, clearly, and immediately after the tag. Do not use speaker labels."""
     else:
         # retrieval_required / research path
         is_sufficient = evaluation.get("sufficient", False) or evaluation.get("relevant", False)
@@ -36,21 +41,25 @@ You MUST synthesize your response using ONLY the provided RETRIEVED CONTEXT belo
 {context}
 =========================
 
-CRITICAL EXECUTION LAWS:
-1. Write a detailed response based strictly on the RETRIEVED CONTEXT.
-2. You MUST append inline citations (e.g. [Source: document.pdf | Page: 12]) after every factual sentence you write.
-3. Do not make assumptions or use external knowledge.
+CRITICAL EXECUTION & FORMATTING LAWS:
+1. Write a detailed response based strictly on the RETRIEVED CONTEXT. Do not make assumptions or use external knowledge.
+2. FORMAT FOR HIGH READABILITY: 
+   - Break information into small, digestible paragraphs (maximum 2-3 sentences per paragraph).
+   - Use bullet points or numbered lists extensively when listing details, features, steps, or facts.
+   - Insert empty lines between all paragraphs and list items to avoid dense walls of text.
+3. You MUST append an inline citation after every factual sentence or list item. Use the exact markdown link reference format (including the citation:// protocol, e.g. `[Source: doc.pdf | Page: X](citation://...)`) exactly as it appears at the start of the matching chunk in the RETRIEVED CONTEXT.
 4. Begin your response immediately. Do not use speaker labels."""
         else:
             sys_instructions = """You are CodexEngine, an elite AI knowledge agent.
 The database search did not return sufficient or relevant local documents.
 
-CRITICAL EXECUTION LAWS:
+CRITICAL EXECUTION & FORMATTING LAWS:
 1. You are authorized to answer using your internal pre-trained knowledge.
 2. You MUST begin your response with this exact warning tag:
    "**[Source: Internal AI Knowledge]** - *No relevant documents found in the database.*\n\n"
-3. If you do not know the answer internally, reply: "I don't have enough specific information to answer that."
-4. Begin your response immediately. Do not use speaker labels."""
+3. FORMAT FOR HIGH READABILITY: Use short paragraphs (max 2-3 sentences), clear bullet points, and blank lines to separate blocks of text.
+4. If you do not know the answer internally, reply: "I don't have enough specific information to answer that."
+5. Begin your response immediately. Do not use speaker labels."""
 
     structured_messages: list[BaseMessage] = [SystemMessage(content=sys_instructions)]
 
