@@ -36,9 +36,11 @@ def ensure_table_exists():
         conn.commit()
 
 
-def ingest_file(file_path: str):
+def ingest_file(file_path: str, thread_id: str = None):
     ensure_table_exists()
     filename = os.path.basename(file_path)
+    # If temporal/attached, strip the thread_id prefix from filename for cleaner citations
+    citation_source = filename.split("_", 1)[1] if thread_id and filename.startswith(f"{thread_id}_") else filename
     ext = os.path.splitext(filename)[1].lower()
     print(f"--- Ingesting Document: {filename} (Type: {ext}) ---")
 
@@ -66,7 +68,10 @@ def ingest_file(file_path: str):
                 for split in splits:
                     if len(split.strip()) < 100:  # Skip trivial chunks
                         continue
-                    chunks_data.append((split, {"source": filename, "page": page_num}))
+                    meta = {"source": citation_source, "page": page_num}
+                    if thread_id:
+                        meta["thread_id"] = thread_id
+                    chunks_data.append((split, meta))
         except Exception as e:
             print(f"❌ Failed to ingest PDF {filename} using PyMuPDF: {e}")
             return
@@ -80,7 +85,10 @@ def ingest_file(file_path: str):
         for split in splits:
             if len(split.strip()) < 100:
                 continue
-            chunks_data.append((split, {"source": filename}))
+            meta = {"source": citation_source}
+            if thread_id:
+                meta["thread_id"] = thread_id
+            chunks_data.append((split, meta))
 
     elif ext == ".csv":
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -90,7 +98,10 @@ def ingest_file(file_path: str):
                 row_str = " | ".join([f"{k}: {v}" for k, v in row.items() if v is not None])
                 if not row_str.strip():
                     continue
-                chunks_data.append((row_str, {"source": filename, "row": row_num}))
+                meta = {"source": citation_source, "row": row_num}
+                if thread_id:
+                    meta["thread_id"] = thread_id
+                chunks_data.append((row_str, meta))
 
     else:
         # Fallback to plain text reading
@@ -103,7 +114,10 @@ def ingest_file(file_path: str):
             for split in splits:
                 if len(split.strip()) < 100:
                     continue
-                chunks_data.append((split, {"source": filename}))
+                meta = {"source": citation_source}
+                if thread_id:
+                    meta["thread_id"] = thread_id
+                chunks_data.append((split, meta))
         except Exception as e:
             print(f"❌ Failed to ingest unsupported file type {filename}: {e}")
             return

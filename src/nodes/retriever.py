@@ -14,18 +14,21 @@ ef = get_embedding_function()
 SIMILARITY_THRESHOLD = 0.35
 
 
-async def retrieve_hybrid_context(state: AgentState):
+async def retrieve_hybrid_context(state: AgentState, config=None):
     # Use the mutable search_query
     current_search = state["search_query"]
     query_emb = ef.embed_query(current_search)
 
+    thread_id = config.get("configurable", {}).get("thread_id", None) if config else None
+
     def _query_db():
         sql = text("""
             SELECT content, metadata, embedding <=> :emb as distance FROM prose_chunks 
+            WHERE (metadata->>'thread_id' IS NULL OR metadata->>'thread_id' = :thread_id)
             ORDER BY distance LIMIT 5;
         """)
         with engine.connect() as conn:
-            results = conn.execute(sql, {"emb": str(query_emb)})
+            results = conn.execute(sql, {"emb": str(query_emb), "thread_id": thread_id})
             formatted_chunks = []
             for r in results:
                 content = r[0]
