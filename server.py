@@ -1,5 +1,6 @@
 import os
 import asyncio
+import uuid
 from fastapi import FastAPI
 from pydantic import BaseModel
 from scripts.ingestion import ingest_file
@@ -234,36 +235,72 @@ async def list_documents_endpoint():
                         size = os.path.getsize(fpath)
                         files.append({"filename": fn, "size_bytes": size, "chunks_count": 0, "status": "Pending"})
             
-            sql = text("SELECT metadata->>'source' as source, count(*) as count FROM prose_chunks GROUP BY source;")
-            db_counts = {}
+            sql = text("""
+                SELECT metadata->>'source' as source, 
+                       metadata->>'thread_id' as thread_id, 
+                       count(*) as count 
+                FROM prose_chunks 
+                GROUP BY source, thread_id;
+            """)
+            db_counts = []
             with engine.connect() as conn:
                 res = conn.execute(sql)
                 for r in res:
                     source = r[0]
-                    count = r[1]
+                    thread_id = r[1]
+                    count = r[2]
                     if source:
-                        db_counts[source] = count
+                        db_counts.append({"source": source, "thread_id": thread_id, "count": count})
             
             merged = []
-            seen_sources = set()
+            seen_keys = set()
+            
+            def is_valid_uuid(val):
+                if not val:
+                    return False
+                try:
+                    uuid.UUID(str(val))
+                    return True
+                except ValueError:
+                    return False
+
             for f in files:
                 fn = f["filename"]
-                seen_sources.add(fn)
-                count = db_counts.get(fn, 0)
+                prefix = None
+                display_name = fn
+                if "_" in fn:
+                    parts = fn.split("_", 1)
+                    potential_uuid = parts[0]
+                    if is_valid_uuid(potential_uuid):
+                        prefix = potential_uuid
+                        display_name = parts[1]
+                
+                count = 0
+                status = "Pending"
+                for db in db_counts:
+                    if db["source"] == display_name and db["thread_id"] == prefix:
+                        count = db["count"]
+                        status = "Ingested"
+                        break
+                
+                seen_keys.add((display_name, prefix))
                 merged.append({
-                    "filename": fn,
+                    "filename": display_name,
                     "size_bytes": f["size_bytes"],
                     "chunks_count": count,
-                    "status": "Ingested" if count > 0 else "Pending"
+                    "status": status,
+                    "thread_id": prefix
                 })
             
-            for source, count in db_counts.items():
-                if source not in seen_sources:
+            for db in db_counts:
+                key = (db["source"], db["thread_id"])
+                if key not in seen_keys:
                     merged.append({
-                        "filename": source,
+                        "filename": db["source"],
                         "size_bytes": 0,
-                        "chunks_count": count,
-                        "status": "Ingested (DB only)"
+                        "chunks_count": db["count"],
+                        "status": "Ingested (DB only)",
+                        "thread_id": db["thread_id"]
                     })
             return merged
 
@@ -275,22 +312,30 @@ async def list_documents_endpoint():
 
 
 @app.delete("/documents/{filename}")
-async def delete_document_endpoint(filename: str):
+async def delete_document_endpoint(filename: str, thread_id: str = None):
     try:
         def _delete():
-            # 1. Delete file on disk if exists
             disk_deleted = False
-            raw_path = f"data/raw/{filename}"
+            if thread_id:
+                raw_path = f"data/raw/{thread_id}_{filename}"
+            else:
+                raw_path = f"data/raw/{filename}"
+
             if os.path.exists(raw_path):
                 os.remove(raw_path)
                 disk_deleted = True
             
-            # 2. Delete database records
             with engine.connect() as conn:
-                res = conn.execute(
-                    text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn"),
-                    {"fn": filename}
-                )
+                if thread_id:
+                    res = conn.execute(
+                        text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'thread_id' = :tid"),
+                        {"fn": filename, "tid": thread_id}
+                    )
+                else:
+                    res = conn.execute(
+                        text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND (metadata->>'thread_id' IS NULL OR metadata->>'thread_id' = '')"),
+                        {"fn": filename}
+                    )
                 conn.commit()
                 rowcount = res.rowcount
             return disk_deleted, rowcount
@@ -303,4 +348,108 @@ async def delete_document_endpoint(filename: str):
         }
     except Exception as e:
         print(f"\n❌ [ERROR] Failed to delete document: {str(e)}")
+        return JSONResponse(status_code=500, content={"message": str(e)})
+
+
+@app.post("/documents/{filename}/reingest")
+async def reingest_document(filename: str, thread_id: str = None):
+    try:
+        def _reingest():
+            if thread_id:
+                raw_path = f"data/raw/{thread_id}_{filename}"
+            else:
+                raw_path = f"data/raw/{filename}"
+
+            if not os.path.exists(raw_path):
+                return False, 0
+
+            # 1. Clear old chunks first to avoid duplicates
+            with engine.connect() as conn:
+                if thread_id:
+                    res = conn.execute(
+                        text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'thread_id' = :tid"),
+                        {"fn": filename, "tid": thread_id}
+                    )
+                else:
+                    res = conn.execute(
+                        text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND (metadata->>'thread_id' IS NULL OR metadata->>'thread_id' = '')"),
+                        {"fn": filename}
+                    )
+                conn.commit()
+                rowcount = res.rowcount
+
+            # 2. Re-trigger ingestion
+            ingest_file(raw_path, thread_id)
+            return True, rowcount
+
+        success, db_deleted = await asyncio.to_thread(_reingest)
+        if not success:
+            return JSONResponse(status_code=404, content={"message": "Source file not found on disk."})
+            
+        return {
+            "message": f"Successfully re-ingested {filename}",
+            "db_chunks_cleared": db_deleted
+        }
+    except Exception as e:
+        print(f"\n❌ [ERROR] Failed to re-ingest document: {str(e)}")
+        return JSONResponse(status_code=500, content={"message": str(e)})
+
+
+@app.post("/upload/temporal")
+async def upload_temporal_document(thread_id: str, file: UploadFile = File(...)):
+    try:
+        os.makedirs("data/raw", exist_ok=True)
+        filename = f"{thread_id}_{file.filename}"
+        file_path = f"data/raw/{filename}"
+
+        # Save the file to disk
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        print(f"\n📥 [TEMPORAL INGESTION] Received temporal file: {file.filename} for thread: {thread_id}")
+
+        # Trigger the Vector DB chunking and ingestion asynchronously with thread_id!
+        await asyncio.to_thread(ingest_file, file_path, thread_id)
+
+        return JSONResponse(
+            status_code=200,
+            content={"message": f"Successfully uploaded and ingested {file.filename} temporally"},
+        )
+
+    except Exception as e:
+        print(f"\n❌ [ERROR] Temporal upload failed: {str(e)}")
+        return JSONResponse(status_code=500, content={"message": str(e)})
+
+
+@app.delete("/chat/{thread_id}/temporal")
+async def delete_temporal_chunks_endpoint(thread_id: str):
+    try:
+        def _delete():
+            # 1. Delete matching files on disk (starts with thread_id_)
+            raw_path = "data/raw"
+            disk_deleted_count = 0
+            if os.path.exists(raw_path):
+                for fn in os.listdir(raw_path):
+                    if fn.startswith(f"{thread_id}_"):
+                        os.remove(os.path.join(raw_path, fn))
+                        disk_deleted_count += 1
+            
+            # 2. Delete database records
+            with engine.connect() as conn:
+                res = conn.execute(
+                    text("DELETE FROM prose_chunks WHERE metadata->>'thread_id' = :tid"),
+                    {"tid": thread_id}
+                )
+                conn.commit()
+                rowcount = res.rowcount
+            return disk_deleted_count, rowcount
+
+        disk_deleted, db_deleted = await asyncio.to_thread(_delete)
+        return {
+            "message": f"Cleared temporal chunks for session {thread_id}",
+            "disk_files_deleted": disk_deleted,
+            "db_chunks_deleted": db_deleted
+        }
+    except Exception as e:
+        print(f"\n❌ [ERROR] Failed to clear temporal chunks: {str(e)}")
         return JSONResponse(status_code=500, content={"message": str(e)})

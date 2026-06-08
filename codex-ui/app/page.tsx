@@ -13,6 +13,15 @@ import {
   PanelLeftClose,
   TerminalSquare,
   X,
+  Pin,
+  Edit2,
+  Trash2,
+  Paperclip,
+  Download,
+  Sparkles,
+  Trash,
+  Copy,
+  Check,
 } from "lucide-react";
 
 type Message = {
@@ -36,7 +45,19 @@ export default function Home() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [threadId, setThreadId] = useState(() => crypto.randomUUID());
-  const [threads, setThreads] = useState<{ id: string; title: string; timestamp: number }[]>([]);
+
+  // Custom Thread type supporting pinning
+  type Thread = { id: string; title: string; timestamp: number; pinned?: boolean };
+  const [threads, setThreads] = useState<Thread[]>([]);
+
+  // Thread Rename and Pinned state
+  const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+
+  // Temporal Attachments State
+  const [sessionFiles, setSessionFiles] = useState<{ filename: string; size_bytes: number; chunks_count: number; status: string; thread_id?: string }[]>([]);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Citation Drawer State
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -66,13 +87,67 @@ export default function Home() {
     }
   }, []);
 
-  const saveThreads = (newThreads: typeof threads) => {
+  const saveThreads = (newThreads: Thread[]) => {
     setThreads(newThreads);
     localStorage.setItem("codex_threads", JSON.stringify(newThreads));
   };
 
+  const togglePin = (id: string) => {
+    const updated = threads.map((t) => {
+      if (t.id === id) {
+        return { ...t, pinned: !t.pinned };
+      }
+      return t;
+    });
+    saveThreads(updated);
+  };
+
+  const startRename = (id: string, title: string) => {
+    setEditingThreadId(id);
+    setEditTitle(title);
+  };
+
+  const saveRename = (id: string) => {
+    if (!editTitle.trim()) return;
+    const updated = threads.map((t) => {
+      if (t.id === id) {
+        return { ...t, title: editTitle.trim() };
+      }
+      return t;
+    });
+    saveThreads(updated);
+    setEditingThreadId(null);
+  };
+
+  const deleteThread = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this chat and all its temporal documents?")) return;
+    
+    // Remove from frontend list
+    const updated = threads.filter((t) => t.id !== id);
+    saveThreads(updated);
+
+    // If it was the current thread, switch to a new one
+    if (threadId === id) {
+      const nextThreadId = crypto.randomUUID();
+      setThreadId(nextThreadId);
+      setMessages([]);
+      setStatus("System Standby");
+    }
+
+    // Call backend to purge temporal chunks and files
+    try {
+      await fetch(`http://127.0.0.1:8000/chat/${id}/temporal`, {
+        method: "DELETE",
+      });
+      fetchSessionFiles();
+    } catch (err) {
+      console.error("Failed to delete temporal backend files:", err);
+    }
+  };
+
   const selectThread = async (id: string) => {
     if (isStreaming) return;
+    setEditingThreadId(null); // Clear editing mode when switching threads
     setThreadId(id);
     setStatus("Loading conversation history...");
     setMessages([]);
@@ -93,7 +168,7 @@ export default function Home() {
   // Modal State
   const [showDocManager, setShowDocManager] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
-  const [documents, setDocuments] = useState<{ filename: string; size_bytes: number; chunks_count: number; status: string }[]>([]);
+  const [documents, setDocuments] = useState<{ filename: string; size_bytes: number; chunks_count: number; status: string; thread_id?: string }[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
 
   const fetchDocuments = async () => {
@@ -111,15 +186,81 @@ export default function Home() {
     }
   };
 
-  const handleDeleteDocument = async (filename: string) => {
+  const fetchSessionFiles = async () => {
+    try {
+      const res = await fetch("http://127.0.0.1:8000/documents");
+      if (res.ok) {
+        const data = await res.json();
+        const filtered = (data.documents || []).filter((doc: any) => doc.thread_id === threadId);
+        setSessionFiles(filtered);
+      }
+    } catch (err) {
+      console.error("Failed to fetch session files:", err);
+    }
+  };
+
+  const handleTemporalFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingFile(true);
+    setStatus("Uploading temporal document...");
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/upload/temporal?thread_id=${threadId}`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (response.ok) {
+        setStatus("Temporal document ingested.");
+        fetchSessionFiles();
+      } else {
+        setStatus("Temporal upload failed.");
+      }
+    } catch (error) {
+      setStatus("Error uploading temporal document.");
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleRemoveTemporalFile = async (filename: string) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/documents/${encodeURIComponent(filename)}?thread_id=${threadId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        fetchSessionFiles();
+        if (showDocManager) {
+          fetchDocuments();
+        }
+      }
+    } catch (err) {
+      console.error("Error removing temporal file:", err);
+    }
+  };
+
+  const handleDeleteDocument = async (filename: string, docThreadId?: string) => {
     if (!confirm(`Are you sure you want to delete ${filename} and all its chunks from the vector database?`)) return;
     try {
-      const res = await fetch(`http://127.0.0.1:8000/documents/${encodeURIComponent(filename)}`, {
+      const url = new URL(`http://127.0.0.1:8000/documents/${encodeURIComponent(filename)}`);
+      if (docThreadId) {
+        url.searchParams.append("thread_id", docThreadId);
+      }
+      const res = await fetch(url.toString(), {
         method: "DELETE",
       });
       if (res.ok) {
         setUploadStatus(`Deleted: ${filename}`);
         fetchDocuments();
+        fetchSessionFiles();
         setTimeout(() => setUploadStatus(""), 2000);
       } else {
         setUploadStatus("Failed to delete document.");
@@ -129,11 +270,103 @@ export default function Home() {
     }
   };
 
+  const handleReingestDocument = async (filename: string, docThreadId?: string) => {
+    setUploadStatus(`Re-ingesting: ${filename}...`);
+    try {
+      const url = new URL(`http://127.0.0.1:8000/documents/${encodeURIComponent(filename)}/reingest`);
+      if (docThreadId) {
+        url.searchParams.append("thread_id", docThreadId);
+      }
+      const res = await fetch(url.toString(), {
+        method: "POST",
+      });
+      if (res.ok) {
+        setUploadStatus(`Re-ingestion triggered for ${filename}`);
+        fetchDocuments();
+        fetchSessionFiles();
+        setTimeout(() => setUploadStatus(""), 2000);
+      } else {
+        const errorData = await res.json();
+        setUploadStatus(`Re-ingestion failed: ${errorData.message || "Unknown error"}`);
+      }
+    } catch (err) {
+      setUploadStatus("Error triggering re-ingestion.");
+    }
+  };
+
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+
+  const copyToClipboard = (text: string, index: number) => {
+    navigator.clipboard.writeText(text);
+    setCopiedIndex(index);
+    setTimeout(() => setCopiedIndex(null), 2000);
+  };
+
+  const clearAllThreads = async () => {
+    if (!confirm("Are you sure you want to delete ALL chat histories and their attached temporal documents? This action is permanent.")) return;
+    const idsToDelete = threads.map(t => t.id);
+    saveThreads([]);
+    const nextThreadId = crypto.randomUUID();
+    setThreadId(nextThreadId);
+    setMessages([]);
+    setStatus("System Standby");
+
+    for (const id of idsToDelete) {
+      try {
+        fetch(`http://127.0.0.1:8000/chat/${id}/temporal`, { method: "DELETE" });
+      } catch (err) {
+        console.error(`Failed to delete temporal backend files for thread ${id}:`, err);
+      }
+    }
+    setSessionFiles([]);
+  };
+
+  const exportChatMarkdown = () => {
+    if (messages.length === 0) return;
+    let content = `# CodexEngine Chat Transcript - Thread: ${threadId}\n\n`;
+    messages.forEach((msg) => {
+      const role = msg.role === "user" ? "User" : "Assistant";
+      content += `### **${role}**\n\n${msg.content}\n\n---\n\n`;
+    });
+    
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `chat-transcript-${threadId.slice(0, 8)}.md`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleQuickPromptClick = (text: string) => {
+    setInput(text);
+    inputRef.current?.focus();
+  };
+
   useEffect(() => {
     if (showDocManager) {
       fetchDocuments();
     }
   }, [showDocManager]);
+
+  useEffect(() => {
+    if (threadId) {
+      fetchSessionFiles();
+    } else {
+      setSessionFiles([]);
+    }
+  }, [threadId]);
+
+  useEffect(() => {
+    const hasPending = sessionFiles.some(f => f.status === "Pending");
+    if (hasPending) {
+      const timer = setTimeout(() => {
+        fetchSessionFiles();
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [sessionFiles]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -341,6 +574,105 @@ export default function Home() {
     }
   };
 
+  const pinnedThreads = threads.filter((t) => t.pinned);
+  const recentThreads = threads.filter((t) => !t.pinned);
+
+  const renderThreadItem = (t: Thread) => {
+    const isEditing = editingThreadId === t.id;
+    const isActive = threadId === t.id;
+
+    if (!sidebarOpen) {
+      return (
+        <div key={t.id} className="px-0 relative group mb-1.5 flex justify-center">
+          <button
+            onClick={() => selectThread(t.id)}
+            className={`flex items-center justify-center w-10 h-10 rounded-lg transition-all border border-transparent relative ${
+              isActive
+                ? "bg-white/10 text-white border-white/10"
+                : "text-gray-400 hover:bg-white/5 hover:text-gray-200 hover:border-white/5"
+            }`}
+            title={t.title}
+          >
+            <MessageSquare size={16} />
+            {t.pinned && (
+              <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-blue-400" />
+            )}
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div key={t.id} className="px-4 mb-1">
+        <div
+          className={`group flex items-center justify-between rounded-lg transition-all border border-transparent ${
+            isActive
+              ? "bg-white/10 text-white border-white/10"
+              : "text-gray-400 hover:bg-white/5 hover:text-gray-200 hover:border-white/5"
+          }`}
+        >
+          {isEditing ? (
+            <input
+              type="text"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") saveRename(t.id);
+                if (e.key === "Escape") setEditingThreadId(null);
+              }}
+              onBlur={() => saveRename(t.id)}
+              className="flex-1 bg-black/60 text-white border border-blue-500/50 rounded px-2.5 py-1.5 text-xs font-sans outline-none focus:ring-1 focus:ring-blue-500 min-w-0"
+              autoFocus
+            />
+          ) : (
+            <div className="flex-1 flex items-center min-w-0 pr-1 py-1 px-2">
+              <button
+                onClick={() => selectThread(t.id)}
+                className="flex-1 flex items-center gap-2.5 text-sm font-medium transition-all text-left min-w-0 py-1"
+                title={t.title}
+              >
+                <MessageSquare size={14} className="text-gray-500 shrink-0 group-hover:text-blue-400 transition-colors" />
+                <span className="truncate pr-1">{t.title}</span>
+              </button>
+
+              {/* Action Buttons (Visible on group-hover) */}
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity pr-1">
+                {/* Pin button */}
+                <button
+                  onClick={() => togglePin(t.id)}
+                  title={t.pinned ? "Unpin Chat" : "Pin Chat"}
+                  className={`p-1 rounded hover:bg-white/10 transition-colors ${
+                    t.pinned ? "text-blue-400" : "text-gray-500 hover:text-gray-200"
+                  }`}
+                >
+                  <Pin size={12} className={t.pinned ? "rotate-45 fill-blue-400" : "rotate-45"} />
+                </button>
+
+                {/* Edit Button */}
+                <button
+                  onClick={() => startRename(t.id, t.title)}
+                  title="Rename"
+                  className="p-1 rounded hover:bg-white/10 text-gray-500 hover:text-gray-200 transition-colors"
+                >
+                  <Edit2 size={12} />
+                </button>
+
+                {/* Delete Button */}
+                <button
+                  onClick={() => deleteThread(t.id)}
+                  title="Delete"
+                  className="p-1 rounded hover:bg-white/10 text-gray-500 hover:text-red-400 transition-colors"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="relative flex h-screen bg-[#0B0C10] text-[#C5C6C7] font-sans overflow-hidden selection:bg-blue-500/30">
       {/* GLOBAL BACKGROUND EFFECTS */}
@@ -441,10 +773,22 @@ export default function Home() {
                           {doc.status}
                         </span>
 
+                        {/* Re-ingest/Retry Button */}
+                        {doc.status !== "Ingested (DB only)" && (
+                          <button
+                            type="button"
+                            onClick={() => handleReingestDocument(doc.filename, doc.thread_id)}
+                            className="p-1 rounded hover:bg-blue-500/10 text-gray-500 hover:text-blue-400 transition-all cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0 text-xs"
+                            title="Re-ingest/Retry document processing"
+                          >
+                            🔄
+                          </button>
+                        )}
+
                         {/* Delete Button */}
                         <button
                           type="button"
-                          onClick={() => handleDeleteDocument(doc.filename)}
+                          onClick={() => handleDeleteDocument(doc.filename, doc.thread_id)}
                           className="p-1 rounded hover:bg-red-500/10 text-gray-500 hover:text-red-400 transition-all cursor-pointer opacity-0 group-hover:opacity-100 focus:opacity-100 shrink-0 text-xs"
                           title="Delete document and chunks"
                         >
@@ -514,37 +858,48 @@ export default function Home() {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-2 pb-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 hover:[&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full">
-          {sidebarOpen ? (
-            <div className="text-xs font-semibold text-gray-600 mb-3 px-6 uppercase tracking-widest whitespace-nowrap mt-4">
-              History
+        <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-4 pb-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 hover:[&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full">
+          {sidebarOpen && (
+            <div className="flex items-center justify-between px-6 mt-3 mb-1">
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">History</span>
+              {threads.length > 0 && (
+                <button
+                  onClick={clearAllThreads}
+                  title="Clear all chat history"
+                  className="p-1 rounded text-gray-500 hover:text-red-400 hover:bg-white/5 transition-all cursor-pointer"
+                >
+                  <Trash size={12} />
+                </button>
+              )}
             </div>
-          ) : (
-            <div className="mt-4"></div>
           )}
-
-          {threads.map((t) => (
-            <div key={t.id} className={sidebarOpen ? "px-4" : "px-0"}>
-              <button
-                onClick={() => selectThread(t.id)}
-                className={`flex items-center gap-3 py-2.5 text-sm rounded-lg transition-colors border border-transparent ${
-                  threadId === t.id
-                    ? "bg-white/10 text-white border-white/10"
-                    : "text-gray-400 hover:bg-white/5 hover:text-gray-200 hover:border-white/5"
-                } ${sidebarOpen ? "w-full px-3" : "w-10 h-10 justify-center mx-auto p-0"}`}
-                title={t.title}
-              >
-                <MessageSquare size={14} className="shrink-0" />
+          {threads.length === 0 ? (
+            sidebarOpen && (
+              <div className="text-center py-8 text-xs text-gray-600 font-mono">
+                No chat history
+              </div>
+            )
+          ) : (
+            <>
+              {pinnedThreads.length > 0 && (
+                <div>
+                  {sidebarOpen && (
+                    <div className="text-[10px] font-semibold text-gray-500 mb-2 px-6 uppercase tracking-widest whitespace-nowrap mt-3 flex items-center gap-1.5">
+                      <Pin size={10} className="rotate-45 text-blue-400 fill-blue-400" /> Pinned
+                    </div>
+                  )}
+                  {pinnedThreads.map(renderThreadItem)}
+                </div>
+              )}
+              <div>
                 {sidebarOpen && (
-                  <span className="truncate">{t.title}</span>
+                  <div className="text-[10px] font-semibold text-gray-500 mb-2 px-6 uppercase tracking-widest whitespace-nowrap mt-3">
+                    Recent
+                  </div>
                 )}
-              </button>
-            </div>
-          ))}
-          {threads.length === 0 && sidebarOpen && (
-            <div className="text-center py-8 text-xs text-gray-600 font-mono">
-              No chat history
-            </div>
+                {recentThreads.map(renderThreadItem)}
+              </div>
+            </>
           )}
         </div>
 
@@ -578,7 +933,7 @@ export default function Home() {
 
       {/* MAIN CHAT AREA */}
       <main className="relative z-10 flex-1 flex flex-col h-full">
-        <header className="h-16 border-b border-white/5 flex items-center px-6 gap-4 bg-black/10 backdrop-blur-sm">
+        <header className="h-16 border-b border-white/5 flex items-center justify-between px-6 bg-black/10 backdrop-blur-sm">
           <div className="flex items-center gap-2 text-xs font-mono">
             <span className="flex h-2 w-2 relative">
               <span
@@ -590,6 +945,17 @@ export default function Home() {
             </span>
             <span className="text-gray-400">{status}</span>
           </div>
+
+          {messages.length > 0 && (
+            <button
+              onClick={exportChatMarkdown}
+              title="Download chat transcript as Markdown"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/10 hover:border-white/20 hover:bg-white/5 text-gray-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95"
+            >
+              <Download size={14} />
+              <span>Export Chat</span>
+            </button>
+          )}
         </header>
 
         <div className="flex-1 overflow-y-auto p-6 md:p-10 space-y-8 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/5 hover:[&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full">
@@ -598,9 +964,45 @@ export default function Home() {
               <h2 className="text-3xl font-semibold text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-500 tracking-tight mb-3">
                 CodexEngine V4
               </h2>
-              <p className="text-sm font-mono text-gray-500">
+              <p className="text-sm font-mono text-gray-500 mb-8">
                 Cognitive Retrieval & Orchestration System is online.
               </p>
+
+              {/* Quick Prompts Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl w-full mt-2 px-4">
+                {[
+                  {
+                    title: "DBeaver & AlloyDB",
+                    desc: "Explain DBeaver's AlloyDB & MySQL support.",
+                    text: "Tell me something surprising about DBeaver!"
+                  },
+                  {
+                    title: "Ingestion Pipeline",
+                    desc: "How are CSV, PDF, and Markdown files processed?",
+                    text: "How does the document ingestion pipeline chunk files?"
+                  },
+                  {
+                    title: "Groundedness Evaluation",
+                    desc: "Explain the groundness and sufficiency routing.",
+                    text: "How does the RAG pipeline evaluate intent and groundedness?"
+                  }
+                ].map((card, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => handleQuickPromptClick(card.text)}
+                    className="flex flex-col text-left p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.06] hover:border-white/10 transition-all group active:scale-95 cursor-pointer animate-fade-in"
+                  >
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-white mb-1">
+                      <Sparkles size={12} className="text-blue-400 group-hover:animate-pulse" />
+                      {card.title}
+                    </div>
+                    <div className="text-[11px] text-gray-500 font-medium leading-relaxed">
+                      {card.desc}
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="max-w-4xl mx-auto space-y-8">
@@ -754,6 +1156,28 @@ export default function Home() {
                             >
                               {msg.content}
                             </ReactMarkdown>
+                            {msg.content !== "" && (
+                              <div className="flex justify-end mt-2 pt-2 border-t border-white/5">
+                                <button
+                                  type="button"
+                                  onClick={() => copyToClipboard(msg.content, idx)}
+                                  className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-gray-500 hover:text-white rounded hover:bg-white/5 transition-colors cursor-pointer"
+                                  title="Copy response to clipboard"
+                                >
+                                  {copiedIndex === idx ? (
+                                    <>
+                                      <Check size={10} className="text-emerald-400" />
+                                      <span className="text-emerald-400 font-bold">Copied</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy size={10} />
+                                      <span>Copy</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )
@@ -771,6 +1195,57 @@ export default function Home() {
         </div>
 
         <div className="p-6">
+          {/* File Input (Hidden) */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleTemporalFileUpload}
+            accept=".pdf,.txt,.md,.csv"
+            className="hidden"
+          />
+
+          {/* Temporal Attachment Chips */}
+          {(sessionFiles.length > 0 || uploadingFile) && (
+            <div className="max-w-4xl mx-auto mb-3 flex flex-wrap gap-2">
+              {sessionFiles.map((file) => (
+                <div
+                  key={file.filename}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs border backdrop-blur-md transition-all ${
+                    file.status === "Pending"
+                      ? "bg-amber-500/10 text-amber-300 border-amber-500/20 animate-pulse"
+                      : "bg-blue-500/10 text-blue-300 border-blue-500/20"
+                  }`}
+                >
+                  <span>{file.filename.endsWith(".pdf") ? "📕" : file.filename.endsWith(".csv") ? "📊" : "📄"}</span>
+                  <span className="max-w-[150px] truncate font-medium" title={file.filename}>
+                    {file.filename}
+                  </span>
+                  {file.status === "Pending" ? (
+                    <span className="text-[10px] text-amber-400 animate-spin">⚙️</span>
+                  ) : (
+                    <span className="text-[10px] text-blue-400 font-bold font-mono">
+                      ({file.chunks_count})
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveTemporalFile(file.filename)}
+                    className="hover:text-red-400 text-gray-400 transition-colors ml-1 p-0.5 rounded-full hover:bg-white/5"
+                    title="Remove attachment"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+              {uploadingFile && (
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs bg-purple-500/10 text-purple-300 border border-purple-500/20 animate-pulse">
+                  <span className="animate-spin text-purple-400">⚙️</span>
+                  <span>Uploading file...</span>
+                </div>
+              )}
+            </div>
+          )}
+
           <form
             onSubmit={sendMessage}
             className="max-w-4xl mx-auto relative flex items-center group"
@@ -782,27 +1257,41 @@ export default function Home() {
               onChange={(e) => setInput(e.target.value)}
               disabled={isStreaming}
               placeholder="Query the engine..."
-              className="w-full bg-black/40 text-gray-100 border border-white/10 rounded-full pl-6 pr-16 py-4 focus:outline-none focus:border-white/30 focus:bg-black/60 transition-all disabled:opacity-50 backdrop-blur-xl shadow-lg"
+              className="w-full bg-black/40 text-gray-100 border border-white/10 rounded-full pl-6 pr-28 py-4 focus:outline-none focus:border-white/30 focus:bg-black/60 transition-all disabled:opacity-50 backdrop-blur-xl shadow-lg"
               autoFocus
             />
-            {isStreaming ? (
+
+            <div className="absolute right-3 flex items-center gap-1.5">
+              {/* Paperclip upload trigger */}
               <button
                 type="button"
-                onClick={stopThinking}
-                className="absolute right-2 p-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-full transition-all cursor-pointer shadow-md active:scale-95 flex items-center justify-center"
-                title="Stop Thinking"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isStreaming || uploadingFile}
+                className="p-2.5 text-gray-400 hover:text-white hover:bg-white/5 rounded-full transition-all disabled:opacity-30 active:scale-95 flex items-center justify-center cursor-pointer"
+                title="Attach document to this thread"
               >
-                <X size={18} />
+                <Paperclip size={18} />
               </button>
-            ) : (
-              <button
-                type="submit"
-                disabled={!input.trim()}
-                className="absolute right-2 p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all disabled:opacity-0"
-              >
-                <Send size={18} />
-              </button>
-            )}
+
+              {isStreaming ? (
+                <button
+                  type="button"
+                  onClick={stopThinking}
+                  className="p-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-full transition-all cursor-pointer shadow-md active:scale-95 flex items-center justify-center"
+                  title="Stop Thinking"
+                >
+                  <X size={18} />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim()}
+                  className="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all disabled:opacity-0 active:scale-95 flex items-center justify-center cursor-pointer"
+                >
+                  <Send size={18} />
+                </button>
+              )}
+            </div>
           </form>
           <div className="text-center mt-4 text-[10px] text-gray-600 font-mono uppercase tracking-widest">
             V4.0 Architecture • AsyncPostgres Active
