@@ -3,9 +3,11 @@ import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import os
 import re
+import csv
+import fitz  # PyMuPDF
 from sqlalchemy import create_engine, text
 from src.repositories.utils import get_embedding_function
-from langchain_community.document_loaders import PyPDFLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
 import json
 
@@ -18,8 +20,8 @@ def clean_text(t):
     return t.replace("\x00", "").strip()
 
 
-def ingest_narrative():
-    # 1. Ensure table has the metadata column (matching our ALTER TABLE)
+def ensure_table_exists():
+    # Ensure table has the metadata column
     with engine.connect() as conn:
         conn.execute(
             text("""
@@ -33,40 +35,115 @@ def ingest_narrative():
         )
         conn.commit()
 
-    # 2. Process Files
-    raw_path = "data/raw"
-    for filename in os.listdir(raw_path):
-        if not filename.endswith(".pdf"):
-            continue
 
-        print(f"--- Ingesting Narrative: {filename} ---")
-        loader = PyPDFLoader(os.path.join(raw_path, filename))
+def ingest_file(file_path: str):
+    ensure_table_exists()
+    filename = os.path.basename(file_path)
+    ext = os.path.splitext(filename)[1].lower()
+    print(f"--- Ingesting Document: {filename} (Type: {ext}) ---")
 
-        # We join the whole book into one stream to avoid 'Page Break' fragmentation
-        full_text = " ".join([clean_text(page.page_content) for page in loader.load()])
+    if not os.path.exists(file_path):
+        print(f"Error: file not found at {file_path}")
+        return
 
-        # Split into 1500-char blocks with 300-char overlap
-        # This is the "Prose-Aware" sweet spot
-        chunks = []
-        for i in range(0, len(full_text), 1200):  # 1200 step = 300 overlap
-            chunks.append(full_text[i : i + 1500])
+    chunks_data = []  # List of tuples: (content_string, metadata_dict)
 
-        with engine.connect() as conn:
-            for chunk in chunks:
-                if len(chunk) < 200:
+    if ext == ".pdf":
+        try:
+            doc = fitz.open(file_path)
+            splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
+            
+            for page_index in range(len(doc)):
+                page_num = page_index + 1
+                page = doc[page_index]
+                page_text = page.get_text()
+                cleaned = clean_text(page_text)
+                if not cleaned.strip():
                     continue
-                emb = ef([chunk])[0]
-                # Pass the source as a JSON string for the JSONB column
-                meta_data = {"source": filename}
-                conn.execute(
-                    text(
-                        "INSERT INTO prose_chunks (content, embedding, metadata) VALUES (:c, :e, :m)"
-                    ),
-                    {"c": chunk, "e": str(emb.tolist()), "m": json.dumps(meta_data)},
-                )
-            conn.commit()
 
-    print("✅ Narrative Ingestion Complete.")
+                # Split within the page
+                splits = splitter.split_text(cleaned)
+                for split in splits:
+                    if len(split.strip()) < 100:  # Skip trivial chunks
+                        continue
+                    chunks_data.append((split, {"source": filename, "page": page_num}))
+        except Exception as e:
+            print(f"❌ Failed to ingest PDF {filename} using PyMuPDF: {e}")
+            return
+
+    elif ext in [".txt", ".md"]:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+        cleaned = clean_text(content)
+        splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
+        splits = splitter.split_text(cleaned)
+        for split in splits:
+            if len(split.strip()) < 100:
+                continue
+            chunks_data.append((split, {"source": filename}))
+
+    elif ext == ".csv":
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            reader = csv.DictReader(f)
+            for i, row in enumerate(reader):
+                row_num = i + 1
+                row_str = " | ".join([f"{k}: {v}" for k, v in row.items() if v is not None])
+                if not row_str.strip():
+                    continue
+                chunks_data.append((row_str, {"source": filename, "row": row_num}))
+
+    else:
+        # Fallback to plain text reading
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+            cleaned = clean_text(content)
+            splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
+            splits = splitter.split_text(cleaned)
+            for split in splits:
+                if len(split.strip()) < 100:
+                    continue
+                chunks_data.append((split, {"source": filename}))
+        except Exception as e:
+            print(f"❌ Failed to ingest unsupported file type {filename}: {e}")
+            return
+
+    # Insert all chunk data into the database
+    if not chunks_data:
+        print(f"⚠️ No valid chunks extracted from {filename}.")
+        return
+
+    print(f"Embedding and inserting {len(chunks_data)} chunks...")
+    with engine.connect() as conn:
+        for content, meta in chunks_data:
+            emb = ef.embed_query(content)
+            conn.execute(
+                text(
+                    "INSERT INTO prose_chunks (content, embedding, metadata) VALUES (:c, :e, :m)"
+                ),
+                {"c": content, "e": str(emb), "m": json.dumps(meta)},
+            )
+        conn.commit()
+
+    print(f"✅ Ingestion of {filename} Complete.")
+
+
+def ingest_narrative():
+    # Process Files
+    raw_path = "data/raw"
+    if not os.path.exists(raw_path):
+        print(f"Creating directory: {raw_path}")
+        os.makedirs(raw_path, exist_ok=True)
+        return
+
+    for filename in os.listdir(raw_path):
+        # Support PDF, TXT, MD, CSV in modular ingestion
+        if not filename.endswith((".pdf", ".txt", ".md", ".csv")):
+            continue
+        file_path = os.path.join(raw_path, filename)
+        ingest_file(file_path)
+
+    print("✅ All Document Ingestion Complete.")
 
 
 if __name__ == "__main__":
