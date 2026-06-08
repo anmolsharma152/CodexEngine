@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from contextlib import asynccontextmanager
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from sqlalchemy import create_engine, text
 
 from src.state import AgentState
 
@@ -30,6 +31,7 @@ from src.nodes.nodes import (
 
 load_dotenv()
 DB_URL = os.environ["DB_URL"]
+engine = create_engine(DB_URL)
 
 
 # 1. Define the Graph (Now with Intent Routing)
@@ -216,4 +218,89 @@ async def upload_document(file: UploadFile = File(...)):
 
     except Exception as e:
         print(f"\n❌ [ERROR] Upload failed: {str(e)}")
+        return JSONResponse(status_code=500, content={"message": str(e)})
+
+
+@app.get("/documents")
+async def list_documents_endpoint():
+    try:
+        def _get():
+            raw_path = "data/raw"
+            files = []
+            if os.path.exists(raw_path):
+                for fn in os.listdir(raw_path):
+                    if fn.endswith((".pdf", ".txt", ".md", ".csv")):
+                        fpath = os.path.join(raw_path, fn)
+                        size = os.path.getsize(fpath)
+                        files.append({"filename": fn, "size_bytes": size, "chunks_count": 0, "status": "Pending"})
+            
+            sql = text("SELECT metadata->>'source' as source, count(*) as count FROM prose_chunks GROUP BY source;")
+            db_counts = {}
+            with engine.connect() as conn:
+                res = conn.execute(sql)
+                for r in res:
+                    source = r[0]
+                    count = r[1]
+                    if source:
+                        db_counts[source] = count
+            
+            merged = []
+            seen_sources = set()
+            for f in files:
+                fn = f["filename"]
+                seen_sources.add(fn)
+                count = db_counts.get(fn, 0)
+                merged.append({
+                    "filename": fn,
+                    "size_bytes": f["size_bytes"],
+                    "chunks_count": count,
+                    "status": "Ingested" if count > 0 else "Pending"
+                })
+            
+            for source, count in db_counts.items():
+                if source not in seen_sources:
+                    merged.append({
+                        "filename": source,
+                        "size_bytes": 0,
+                        "chunks_count": count,
+                        "status": "Ingested (DB only)"
+                    })
+            return merged
+
+        data = await asyncio.to_thread(_get)
+        return {"documents": data}
+    except Exception as e:
+        print(f"\n❌ [ERROR] Failed to list documents: {str(e)}")
+        return JSONResponse(status_code=500, content={"message": str(e)})
+
+
+@app.delete("/documents/{filename}")
+async def delete_document_endpoint(filename: str):
+    try:
+        def _delete():
+            # 1. Delete file on disk if exists
+            disk_deleted = False
+            raw_path = f"data/raw/{filename}"
+            if os.path.exists(raw_path):
+                os.remove(raw_path)
+                disk_deleted = True
+            
+            # 2. Delete database records
+            with engine.connect() as conn:
+                res = conn.execute(
+                    text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn"),
+                    {"fn": filename}
+                )
+                conn.commit()
+                rowcount = res.rowcount
+            return disk_deleted, rowcount
+
+        disk_deleted, db_deleted = await asyncio.to_thread(_delete)
+        return {
+            "message": f"Successfully deleted {filename}",
+            "disk_deleted": disk_deleted,
+            "db_chunks_deleted": db_deleted
+        }
+    except Exception as e:
+        print(f"\n❌ [ERROR] Failed to delete document: {str(e)}")
         return JSONResponse(status_code=500, content={"message": str(e)})
