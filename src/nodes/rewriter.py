@@ -11,7 +11,7 @@ llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.2, max_retries=3)
 
 
 async def rewrite_query(state: AgentState):
-    # 1. Dictionary access for V3 State
+    # 1. Dictionary access for V4 State
     current_search = state["search_query"]
     context_samples = (
         state["context"][:500] if state["context"] else "No context found yet."

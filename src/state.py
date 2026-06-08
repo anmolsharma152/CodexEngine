@@ -5,7 +5,7 @@ from langgraph.graph.message import add_messages
 
 class AgentState(TypedDict):
     """
-    CodexEngine V3.0 State: Merging V2.5 Strictness with V3.0 Memory.
+    CodexEngine V4.0 State: Persistent Cognition and Structured Evaluation.
     """
 
     # 1. Memory & State Tracking

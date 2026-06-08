@@ -85,7 +85,7 @@ async def lifespan(app: FastAPI):
 
 
 # 3. Initialize FastAPI with the lifespan
-app = FastAPI(title="CodexEngine V3 API", lifespan=lifespan)
+app = FastAPI(title="CodexEngine V4 API", lifespan=lifespan)
 
 # --- HARDENED CORS BLOCK ---
 app.add_middleware(

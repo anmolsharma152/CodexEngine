@@ -499,7 +499,7 @@ export default function Home() {
                 CodexEngine V4
               </h2>
               <p className="text-sm font-mono text-gray-500">
-                Agentic RAG Pipeline is ready.
+                Cognitive Retrieval & Orchestration System is online.
               </p>
             </div>
           ) : (
