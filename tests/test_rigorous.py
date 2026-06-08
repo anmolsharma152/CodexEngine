@@ -58,10 +58,10 @@ async def run_rigorous_tests():
         )
 
     # Save for comparison
-    with open("eval/v2_5_live_results.json", "w") as f:
+    with open("eval/v4_0_live_results.json", "w") as f:
         json.dump(results, f, indent=2)
 
-    print("\n✅ Sweep Complete. Results saved to eval/v2_5_live_results.json")
+    print("\n✅ Sweep Complete. Results saved to eval/v4_0_live_results.json")
 
 
 if __name__ == "__main__":
