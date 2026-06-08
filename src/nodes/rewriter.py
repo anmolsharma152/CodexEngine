@@ -7,10 +7,10 @@ from src.state import AgentState
 load_dotenv()
 
 # Standardize on the 8b-instant for the rewriter
-llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.2)
+llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.2, max_retries=3)
 
 
-def rewrite_query(state: AgentState):
+async def rewrite_query(state: AgentState):
     # 1. Dictionary access for V3 State
     current_search = state["search_query"]
     context_samples = (
@@ -37,7 +37,7 @@ def rewrite_query(state: AgentState):
     Return ONLY the new search string without quotes.
     """
 
-    response = llm.invoke(prompt)
+    response = await llm.ainvoke(prompt)
     new_query = response.content.strip().replace('"', "")
 
     return {

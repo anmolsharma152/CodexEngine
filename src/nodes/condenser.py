@@ -3,7 +3,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from src.state import AgentState
 
 
-def condense_question_node(state: AgentState):
+async def condense_question_node(state: AgentState):
     """Resolves pronouns using chat history via Groq."""
     history = state["messages"][:-1]
 
@@ -20,10 +20,10 @@ def condense_question_node(state: AgentState):
     """)
 
     # Use Groq llama-3.1-8b for fast resolution
-    llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0)
+    llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0, max_retries=3)
     chain = prompt | llm
 
-    result = chain.invoke({"history": history, "user_query": state["user_query"]})
+    result = await chain.ainvoke({"history": history, "user_query": state["user_query"]})
 
     print(f"\n--- [MEMORY] Resolved Query: {result.content} ---")
 

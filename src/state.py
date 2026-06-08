@@ -23,6 +23,7 @@ class AgentState(TypedDict):
     # 3. V2.5 Guardrails (Keeping these!)
     intent: str
     critic_score: float
+    evaluation: dict
     revision_count: int
     next_step: str
 

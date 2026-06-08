@@ -1,9 +1,16 @@
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
 import json
-from src.graph import app
-from src.state import AgentState
+import asyncio
+from langgraph.checkpoint.memory import MemorySaver
+from server import create_graph
+
+checkpointer = MemorySaver()
+app = create_graph(checkpointer)
 
 
-def run_rigorous_tests():
+async def run_rigorous_tests():
     # 1. Load the Benchmarks
     with open("eval/golden_queries.json", "r") as f:
         data = json.load(f)
@@ -19,24 +26,34 @@ def run_rigorous_tests():
         print(f"QUESTION: {q['question']}")
         print(f"{'=' * 50}")
 
-        inputs = AgentState(query=q["question"])
+        inputs = {
+            "user_query": q["question"],
+            "search_query": q["question"],
+            "messages": [("user", q["question"])],
+            "context": "",
+            "critic_score": 0.0,
+            "revision_count": 0,
+            "response": "",
+        }
+
+        config = {"configurable": {"thread_id": f"thread_{q['query_id']}"}}
 
         # Run the full agentic loop
         final_answer = ""
-        for output in app.stream(inputs):
+        async for output in app.astream(inputs, config):
             for node, state in output.items():
                 if node == "evaluate":
                     print(f"-> Critic Score: {state.get('critic_score')}")
                 if node == "rewrite":
-                    print(f"-> Rewriter Pivot: {state.get('query')}")
+                    print(f"-> Rewriter Pivot: {state.get('search_query')}")
                 if node == "actor":
-                    final_answer = state.get("answer")
+                    final_answer = state.get("response", "")
 
         results.append(
             {
                 "query_id": q["query_id"],
                 "question": q["question"],
-                "v2_5_answer": final_answer,
+                "v3_0_answer": final_answer,
             }
         )
 
@@ -48,4 +65,4 @@ def run_rigorous_tests():
 
 
 if __name__ == "__main__":
-    run_rigorous_tests()
+    asyncio.run(run_rigorous_tests())

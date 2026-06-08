@@ -6,30 +6,34 @@ from src.state import AgentState
 load_dotenv()
 
 # Blazing-fast 8B model with 0.0 temperature for deterministic routing
-router_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.0)
+router_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.0, max_retries=3)
 
 
-def analyze_intent(state: AgentState):
+async def analyze_intent(state: AgentState):
     print("\n--- [ROUTER] Analyzing User Intent ---")
 
+    raw_query = state["user_query"]
+    # Truncate to prevent token burn on large pasted payloads (e.g. logs)
+    query_sample = raw_query[:1500] + "\n[Truncated for Routing...]" if len(raw_query) > 1500 else raw_query
+
     prompt = f"""
-    You are a highly efficient routing system for an AI assistant. Classify the following user query into exactly ONE of these three categories:
-    
-    1. 'casual': Greetings, small talk, OR explicit statements where the user is telling you personal facts, system setups, or rules to remember for the session. Also includes questions about the user's own name, preferences, or conversation history.
-    2. 'explanatory': General world knowledge, abstract concepts, math, or coding help that can be answered purely using pre-trained internal logic without a database.
-    3. 'research': Queries asking for specific facts, metrics, citations, figures, or data located within indexed documents, books, papers, or technical manuals.
-    
-    User Query: "{state["user_query"]}"
-    
-    Output ONLY the category name in lowercase (casual, explanatory, or research). Do not add any punctuation, intro, or explanation.
+    You are a highly efficient routing system for an AI assistant. Classify the user query into exactly ONE of the following routing decisions:
+
+    1. 'direct_casual': Greetings, small talk, pleasantries, or questions purely about the user's/assistant's identity and session rules. These can be answered directly without search.
+    2. 'direct_parametric': General programming syntax questions, basic math, or broad world knowledge queries that the AI can answer confidently and completely using its internal pre-trained knowledge without needing local documents.
+    3. 'retrieval_required': Specific factual queries, questions about literature, custom documents, DBeaver settings, quantum physics, AI research papers, or any topic that requires retrieval of indexed context to be grounded and accurate.
+
+    User Query: "{query_sample}"
+
+    Output ONLY the routing decision name in lowercase (direct_casual, direct_parametric, or retrieval_required). Do not add any punctuation, intro, or explanation.
     """
 
-    response = router_llm.invoke(prompt)
+    response = await router_llm.ainvoke(prompt)
     intent = response.content.strip().lower()
 
-    # Fallback safety net
-    if intent not in ["casual", "explanatory", "research"]:
-        intent = "research"
+    # The ultimate safety net: If it hallucinates or gets confused, force it to check the database.
+    if intent not in ["direct_casual", "direct_parametric", "retrieval_required"]:
+        intent = "retrieval_required"
 
     print(f"--- [ROUTER] Intent Classified: {intent.upper()} ---")
     return {"intent": intent}

@@ -1,22 +1,35 @@
 import os
+import asyncio
 from fastapi import FastAPI
 from pydantic import BaseModel
+from scripts.ingestion import ingest_file
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, START, END
+
+import shutil
+from fastapi import File, UploadFile
+from fastapi.responses import JSONResponse
 
 import json
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from contextlib import asynccontextmanager
-from psycopg_pool import AsyncConnectionPool
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+from src.state import AgentState
+
+from src.nodes.nodes import (
+    analyze_intent,
+    condense_question_node,
+    evaluate_retrieval,
+    generate_answer,
+    retrieve_hybrid_context,
+    rewrite_query,
+)
 
 load_dotenv()
 DB_URL = os.environ["DB_URL"]
-
-from src.state import AgentState
-from src.nodes.nodes import *
 
 
 # 1. Define the Graph (Now with Intent Routing)
@@ -36,10 +49,10 @@ def create_graph(checkpointer):
 
     # Dynamic Routing Condition
     def route_after_analysis(state: AgentState):
-        if state.get("intent") == "research":
+        if state.get("intent") == "retrieval_required":
             return "condense"  # Hit the heavy PDF processing pipeline
         else:
-            return "actor"  # Casual & Explanatory bypass the DB completely
+            return "actor"  # Casual & Parametric bypass the DB completely
 
     workflow.add_conditional_edges(
         "router", route_after_analysis, {"condense": "condense", "actor": "actor"}
@@ -77,7 +90,7 @@ app = FastAPI(title="CodexEngine V3 API", lifespan=lifespan)
 # --- HARDENED CORS BLOCK ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Locked down to Next.js only
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -101,6 +114,7 @@ async def chat_stream_endpoint(request: ChatRequest):
         "messages": [("user", request.message)],
         "context": "",
         "critic_score": 0.0,
+        "evaluation": {},
         "revision_count": 0,
         "response": "",
     }
@@ -127,9 +141,11 @@ async def chat_stream_endpoint(request: ChatRequest):
 
                 # 2. Stream LLM Tokens (The actual answer)
                 elif kind == "on_chat_model_stream":
-                    chunk = event["data"]["chunk"].content
-                    if chunk:
-                        yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+                    # THE Fix: Only stream tokens if they come from the final Actor node
+                    if event.get("metadata", {}).get("langgraph_node") == "actor":
+                        chunk = event["data"]["chunk"].content
+                        if chunk:
+                            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
 
             # Signal the frontend that the stream is complete
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
@@ -140,3 +156,54 @@ async def chat_stream_endpoint(request: ChatRequest):
 
     # Return the generator wrapped in FastAPI's SSE format
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.get("/chat/{thread_id}/history")
+async def chat_history_endpoint(thread_id: str):
+    try:
+        config = {"configurable": {"thread_id": thread_id}}
+        state = await app.state.agent_engine.aget_state(config)
+        messages = state.values.get("messages", [])
+        history = []
+        for msg in messages:
+            if isinstance(msg, tuple):
+                role, content = msg[0], msg[1]
+            elif hasattr(msg, "type"):
+                role = "user" if msg.type == "human" else ("assistant" if msg.type == "ai" else msg.type)
+                content = msg.content
+            else:
+                continue
+            if role in ["user", "assistant"]:
+                history.append({"role": role, "content": content})
+        return {"history": history}
+    except Exception as e:
+        print(f"\n❌ [ERROR] Failed to fetch history: {str(e)}")
+        return JSONResponse(status_code=500, content={"message": str(e)})
+
+
+# Create a staging directory for uploaded documents
+os.makedirs("data/raw", exist_ok=True)
+
+
+@app.post("/upload")
+async def upload_document(file: UploadFile = File(...)):
+    try:
+        file_path = f"data/raw/{file.filename}"
+
+        # Save the file to disk
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        print(f"\n📥 [INGESTION] Received file: {file.filename}")
+
+        # Trigger the Vector DB chunking and ingestion asynchronously
+        await asyncio.to_thread(ingest_file, file_path)
+
+        return JSONResponse(
+            status_code=200,
+            content={"message": f"Successfully uploaded and ingested {file.filename}"},
+        )
+
+    except Exception as e:
+        print(f"\n❌ [ERROR] Upload failed: {str(e)}")
+        return JSONResponse(status_code=500, content={"message": str(e)})
