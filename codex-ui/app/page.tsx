@@ -586,15 +586,26 @@ export default function Home() {
                                 a(props) {
                                   const { href, children, ...rest } = props;
                                   if (href && href.startsWith("citation://")) {
-                                    return (
-                                      <button
-                                        type="button"
-                                        onClick={() => handleCitationClick(href, msg.context || "")}
-                                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 my-0.5 rounded-full text-xs font-mono font-semibold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 transition-all hover:scale-105 active:scale-95 cursor-pointer align-middle mr-1.5 font-normal"
-                                      >
-                                        📎 {children}
-                                      </button>
-                                    );
+                                    try {
+                                      const cleanHref = href.replace("citation://", "http://temp-host/");
+                                      const url = new URL(cleanHref);
+                                      const source = decodeURIComponent(url.pathname.substring(1));
+                                      const page = url.searchParams.get("page") || "";
+                                      const row = url.searchParams.get("row") || "";
+                                      const label = page ? `p. ${page}` : (row ? `r. ${row}` : "doc");
+                                      return (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCitationClick(href, msg.context || "")}
+                                          title={`Source: ${source}${page ? ` | Page: ${page}` : ""}${row ? ` | Row: ${row}` : ""}`}
+                                          className="inline-flex items-center justify-center px-1 py-0.5 mx-0.5 rounded text-[9px] font-mono font-bold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 transition-all cursor-pointer align-super"
+                                        >
+                                          [{label}]
+                                        </button>
+                                      );
+                                    } catch (e) {
+                                      console.error("Error parsing citation link", e);
+                                    }
                                   }
                                   return (
                                     <a
