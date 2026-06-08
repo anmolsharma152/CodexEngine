@@ -18,6 +18,15 @@ import {
 type Message = {
   role: "user" | "assistant";
   content: string;
+  intent?: string;
+  evaluation?: {
+    relevant?: boolean;
+    sufficient?: boolean;
+    grounded?: boolean;
+    confidence?: number;
+    retry_needed?: boolean;
+  };
+  context?: string;
 };
 
 export default function Home() {
@@ -28,6 +37,13 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [threadId, setThreadId] = useState(() => crypto.randomUUID());
   const [threads, setThreads] = useState<{ id: string; title: string; timestamp: number }[]>([]);
+
+  // Citation Drawer State
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedChunk, setSelectedChunk] = useState("");
+  const [selectedSource, setSelectedSource] = useState("");
+  const [selectedPage, setSelectedPage] = useState("");
+  const [selectedRow, setSelectedRow] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem("codex_threads");
@@ -180,6 +196,18 @@ export default function Home() {
                     };
                     return copy;
                   });
+                } else if (data.type === "evaluation") {
+                  setMessages((prev) => {
+                    const copy = [...prev];
+                    const lastIdx = copy.length - 1;
+                    copy[lastIdx] = {
+                      ...copy[lastIdx],
+                      intent: data.intent,
+                      evaluation: data.content,
+                      context: data.context,
+                    };
+                    return copy;
+                  });
                 } else if (data.type === "done") {
                   setStatus("Stream complete.");
                 } else if (data.type === "error") {
@@ -205,6 +233,51 @@ export default function Home() {
       setStatus("Failed to connect to engine.");
     } finally {
       setIsStreaming(false);
+    }
+  };
+
+  const handleCitationClick = (href: string, context: string) => {
+    try {
+      const cleanHref = href.replace("citation://", "http://temp-host/");
+      const url = new URL(cleanHref);
+      const source = decodeURIComponent(url.pathname.substring(1));
+      const page = url.searchParams.get("page") || "";
+      const row = url.searchParams.get("row") || "";
+
+      // Find the matching chunk in context.
+      const chunks = context.split("\n\n");
+      let matchedChunk = "";
+
+      for (const chunk of chunks) {
+        // Try to find the chunk containing the exact citation URL
+        if (chunk.includes(href)) {
+          const lines = chunk.split("\n");
+          matchedChunk = lines.slice(1).join("\n");
+          break;
+        }
+      }
+
+      if (!matchedChunk) {
+        // Try a looser match using source name and page/row
+        for (const chunk of chunks) {
+          const matchesSource = chunk.toLowerCase().includes(source.toLowerCase());
+          const matchesPage = page ? chunk.includes(`Page: ${page}`) || chunk.includes(`page=${page}`) : true;
+          const matchesRow = row ? chunk.includes(`Row: ${row}`) || chunk.includes(`row=${row}`) : true;
+          if (matchesSource && matchesPage && matchesRow) {
+            const lines = chunk.split("\n");
+            matchedChunk = lines.slice(1).join("\n");
+            break;
+          }
+        }
+      }
+
+      setSelectedSource(source);
+      setSelectedPage(page);
+      setSelectedRow(row);
+      setSelectedChunk(matchedChunk || "No matching source text chunk found in retrieved context.");
+      setDrawerOpen(true);
+    } catch (err) {
+      console.error("Error parsing citation:", err);
     }
   };
 
@@ -426,15 +499,120 @@ export default function Home() {
                   >
                     {msg.role === "assistant" ? (
                       msg.content === "" && isStreaming ? (
-                        <div className="flex items-center gap-3 text-blue-400 font-mono text-sm py-2">
-                          <span className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></span>
-                          <span className="animate-pulse">{status}</span>
+                        <div className="space-y-4 py-2 w-full min-w-[320px]">
+                          <div className="h-4 rounded-md gemini-thinking w-1/3 opacity-75"></div>
+                          <div className="h-4 rounded-md gemini-thinking w-5/6 opacity-75"></div>
+                          <div className="h-4 rounded-md gemini-thinking w-2/3 opacity-75"></div>
+                          <div className="text-xs font-mono text-gray-500 mt-3 animate-pulse">
+                            ⚙️ {status}
+                          </div>
                         </div>
                       ) : (
-                        <div className="prose prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10 prose-pre:rounded-xl prose-code:text-blue-300">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {msg.content}
-                          </ReactMarkdown>
+                        <div className="flex flex-col">
+                          {/* Cognition Dashboard */}
+                          {(msg.intent || msg.evaluation) && (
+                            <details className="group border border-white/10 bg-white/5 rounded-xl mb-4 overflow-hidden max-w-lg">
+                              <summary className="flex items-center justify-between px-4 py-2 text-xs font-mono cursor-pointer select-none hover:bg-white/5 transition-colors">
+                                <div className="flex items-center gap-2">
+                                  <span className={`h-2 w-2 rounded-full ${
+                                    msg.intent === "retrieval_required"
+                                      ? (msg.evaluation?.grounded ? "bg-emerald-500 animate-pulse" : "bg-amber-500 animate-pulse")
+                                      : "bg-blue-500"
+                                  }`} />
+                                  <span className="font-semibold text-gray-200">
+                                    Cognition Panel: {
+                                      msg.intent === "retrieval_required"
+                                        ? (msg.evaluation?.grounded ? "Grounded RAG" : "Fallback RAG")
+                                        : msg.intent === "direct_parametric"
+                                        ? "Parametric Engine"
+                                        : "Casual Interaction"
+                                    }
+                                  </span>
+                                </div>
+                                <span className="text-gray-400 group-open:rotate-180 transition-transform">▼</span>
+                              </summary>
+                              <div className="px-4 py-3 border-t border-white/5 bg-black/40 text-[11px] font-mono text-gray-300 space-y-2.5">
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                                  <div className="flex justify-between border-b border-white/5 pb-1">
+                                    <span className="text-gray-500">Intent:</span>
+                                    <span className="text-blue-400 font-semibold">{msg.intent || "retrieval_required"}</span>
+                                  </div>
+                                  <div className="flex justify-between border-b border-white/5 pb-1">
+                                    <span className="text-gray-500">Confidence:</span>
+                                    <span className="text-blue-400 font-semibold">
+                                      {msg.evaluation?.confidence !== undefined
+                                        ? `${(msg.evaluation.confidence * 100).toFixed(0)}%`
+                                        : "N/A"}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between border-b border-white/5 pb-1">
+                                    <span className="text-gray-500">Relevant:</span>
+                                    <span className={msg.evaluation?.relevant ? "text-emerald-400 font-semibold" : "text-amber-400 font-semibold"}>
+                                      {msg.evaluation?.relevant ? "TRUE" : "FALSE"}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between border-b border-white/5 pb-1">
+                                    <span className="text-gray-500">Sufficient:</span>
+                                    <span className={msg.evaluation?.sufficient ? "text-emerald-400 font-semibold" : "text-amber-400 font-semibold"}>
+                                      {msg.evaluation?.sufficient ? "TRUE" : "FALSE"}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between border-b border-white/5 pb-1">
+                                    <span className="text-gray-500">Grounded:</span>
+                                    <span className={msg.evaluation?.grounded ? "text-emerald-400 font-semibold" : "text-amber-400 font-semibold"}>
+                                      {msg.evaluation?.grounded ? "TRUE" : "FALSE"}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between border-b border-white/5 pb-1">
+                                    <span className="text-gray-500">Retry needed:</span>
+                                    <span className={msg.evaluation?.retry_needed ? "text-red-400 font-semibold" : "text-gray-400 font-semibold"}>
+                                      {msg.evaluation?.retry_needed ? "TRUE" : "FALSE"}
+                                    </span>
+                                  </div>
+                                </div>
+                                {msg.intent === "direct_parametric" && (
+                                  <div className="text-[10px] text-amber-400/80 bg-amber-400/5 border border-amber-400/10 p-2 rounded-lg">
+                                    ⚠️ Context database bypassed. Relying on pre-trained parametric knowledge.
+                                  </div>
+                                )}
+                              </div>
+                            </details>
+                          )}
+
+                          <div className="prose prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border prose-pre:border-white/10 prose-pre:rounded-xl prose-code:text-blue-300">
+                            <ReactMarkdown
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                a(props) {
+                                  const { href, children, ...rest } = props;
+                                  if (href && href.startsWith("citation://")) {
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCitationClick(href, msg.context || "")}
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 my-0.5 rounded-full text-xs font-mono font-semibold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 transition-all hover:scale-105 active:scale-95 cursor-pointer align-middle mr-1.5 font-normal"
+                                      >
+                                        📎 {children}
+                                      </button>
+                                    );
+                                  }
+                                  return (
+                                    <a
+                                      href={href}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-400 hover:underline"
+                                      {...rest}
+                                    >
+                                      {children}
+                                    </a>
+                                  );
+                                }
+                              }}
+                            >
+                              {msg.content}
+                            </ReactMarkdown>
+                          </div>
                         </div>
                       )
                     ) : (
@@ -478,6 +656,69 @@ export default function Home() {
           </div>
         </div>
       </main>
+
+      {/* Drawer Overlay */}
+      {drawerOpen && (
+        <div
+          onClick={() => setDrawerOpen(false)}
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300"
+        />
+      )}
+
+      {/* CONTEXT DRAWER (Slides from right) */}
+      <aside
+        className={`fixed top-0 right-0 h-full w-full sm:w-[450px] bg-[#111216]/95 backdrop-blur-2xl border-l border-white/10 shadow-2xl z-50 transform ${
+          drawerOpen ? "translate-x-0" : "translate-x-full"
+        } transition-transform duration-300 ease-in-out flex flex-col`}
+      >
+        <div className="h-16 flex items-center justify-between px-6 border-b border-white/10">
+          <div className="flex items-center gap-2">
+            <TerminalSquare className="text-blue-400" size={18} />
+            <span className="font-bold text-white tracking-tight">Source Context</span>
+          </div>
+          <button
+            onClick={() => setDrawerOpen(false)}
+            className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="space-y-1">
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 font-mono">Document</div>
+            <div className="text-sm font-semibold text-white break-all">{selectedSource}</div>
+          </div>
+
+          {(selectedPage || selectedRow) && (
+            <div className="flex gap-6">
+              {selectedPage && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-gray-500 font-mono">Page</div>
+                  <div className="text-sm font-semibold text-blue-400 font-mono">{selectedPage}</div>
+                </div>
+              )}
+              {selectedRow && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-gray-500 font-mono">Row Index</div>
+                  <div className="text-sm font-semibold text-blue-400 font-mono">{selectedRow}</div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <div className="text-[10px] uppercase tracking-wider text-gray-500 font-mono">Retrieved Chunk</div>
+            <div className="bg-black/40 border border-white/5 rounded-xl p-4 text-xs font-mono text-gray-300 whitespace-pre-wrap leading-relaxed max-h-[50vh] overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full">
+              {selectedChunk}
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-white/10 bg-black/20 text-[10px] font-mono text-gray-600 text-center">
+          V4 Ingestion Pipeline • fitz-compiled page offsets
+        </div>
+      </aside>
     </div>
   );
 }
