@@ -44,6 +44,16 @@ export default function Home() {
   const [selectedSource, setSelectedSource] = useState("");
   const [selectedPage, setSelectedPage] = useState("");
   const [selectedRow, setSelectedRow] = useState("");
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const stopThinking = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsStreaming(false);
+    setStatus("Thinking stopped.");
+  };
 
   useEffect(() => {
     const saved = localStorage.getItem("codex_threads");
@@ -152,11 +162,15 @@ export default function Home() {
       saveThreads([newThread, ...threads]);
     }
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       const response = await fetch("http://127.0.0.1:8000/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userMessage, thread_id: threadId }),
+        signal: controller.signal,
       });
 
       if (!response.body) throw new Error("No response body");
@@ -230,9 +244,14 @@ export default function Home() {
         }
       }
     } catch (error) {
-      setStatus("Failed to connect to engine.");
+      if (error instanceof Error && error.name === "AbortError") {
+        setStatus("Thinking stopped.");
+      } else {
+        setStatus("Failed to connect to engine.");
+      }
     } finally {
       setIsStreaming(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -500,11 +519,23 @@ export default function Home() {
                     {msg.role === "assistant" ? (
                       msg.content === "" && isStreaming ? (
                         <div className="space-y-4 py-2 w-full min-w-[320px]">
-                          <div className="h-4 rounded-md gemini-thinking w-1/3 opacity-75"></div>
-                          <div className="h-4 rounded-md gemini-thinking w-5/6 opacity-75"></div>
-                          <div className="h-4 rounded-md gemini-thinking w-2/3 opacity-75"></div>
-                          <div className="text-xs font-mono text-gray-500 mt-3 animate-pulse">
-                            ⚙️ {status}
+                          {/* Standard Tailwind pulsing gradient bars */}
+                          <div className="h-3 rounded-md bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 animate-pulse w-1/3"></div>
+                          <div className="h-3 rounded-md bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 animate-pulse w-5/6"></div>
+                          <div className="h-3 rounded-md bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 animate-pulse w-2/3"></div>
+                          
+                          <div className="flex items-center gap-3 mt-4 pt-2 border-t border-white/5">
+                            <span className="text-xs font-mono text-gray-500 animate-pulse flex items-center gap-1.5">
+                              <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-ping" />
+                              {status}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={stopThinking}
+                              className="px-2.5 py-1 text-[10px] font-mono font-bold bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 hover:border-red-500/40 rounded transition-all cursor-pointer shadow-sm active:scale-95"
+                            >
+                              Stop Thinking
+                            </button>
                           </div>
                         </div>
                       ) : (
@@ -654,13 +685,24 @@ export default function Home() {
               className="w-full bg-black/40 text-gray-100 border border-white/10 rounded-full pl-6 pr-16 py-4 focus:outline-none focus:border-white/30 focus:bg-black/60 transition-all disabled:opacity-50 backdrop-blur-xl shadow-lg"
               autoFocus
             />
-            <button
-              type="submit"
-              disabled={isStreaming || !input.trim()}
-              className="absolute right-2 p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all disabled:opacity-0"
-            >
-              <Send size={18} className={isStreaming ? "animate-pulse" : ""} />
-            </button>
+            {isStreaming ? (
+              <button
+                type="button"
+                onClick={stopThinking}
+                className="absolute right-2 p-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-full transition-all cursor-pointer shadow-md active:scale-95 flex items-center justify-center"
+                title="Stop Thinking"
+              >
+                <X size={18} />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!input.trim()}
+                className="absolute right-2 p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all disabled:opacity-0"
+              >
+                <Send size={18} />
+              </button>
+            )}
           </form>
           <div className="text-center mt-4 text-[10px] text-gray-600 font-mono uppercase tracking-widest">
             V3.0 Architecture • AsyncPostgres Active
