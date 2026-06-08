@@ -40,11 +40,11 @@ async def retrieve_hybrid_context(state: AgentState):
                 source = meta.get("source", "Unknown Source")
                 
                 if "page" in meta:
-                    ref = f"[Source: {source} | Page: {meta['page']}]"
+                    ref = f"[Source: {source} | Page: {meta['page']}](citation://{source}?page={meta['page']})"
                 elif "row" in meta:
-                    ref = f"[Source: {source} | Row: {meta['row']}]"
+                    ref = f"[Source: {source} | Row: {meta['row']}](citation://{source}?row={meta['row']})"
                 else:
-                    ref = f"[Source: {source}]"
+                    ref = f"[Source: {source}](citation://{source})"
                 
                 formatted_chunks.append(f"{ref}\n{content}")
             return formatted_chunks

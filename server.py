@@ -147,6 +147,16 @@ async def chat_stream_endpoint(request: ChatRequest):
                         if chunk:
                             yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
 
+            # Fetch final state and yield structured evaluation metrics for the UI Command Center
+            try:
+                state = await app.state.agent_engine.aget_state(config)
+                evaluation = state.values.get("evaluation", {})
+                intent = state.values.get("intent", "retrieval_required")
+                context = state.values.get("context", "")
+                yield f"data: {json.dumps({'type': 'evaluation', 'content': evaluation, 'intent': intent, 'context': context})}\n\n"
+            except Exception as e:
+                print(f"--- [ERROR] Failed to yield evaluation metrics: {e} ---")
+
             # Signal the frontend that the stream is complete
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
