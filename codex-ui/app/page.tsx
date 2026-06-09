@@ -22,6 +22,7 @@ import {
   Trash,
   Copy,
   Check,
+  RefreshCw,
 } from "lucide-react";
 
 type Message = {
@@ -37,6 +38,94 @@ type Message = {
   };
   context?: string;
 };
+
+interface QuickPrompt {
+  title: string;
+  desc: string;
+  text: string;
+  docKeywords: string[];
+}
+
+const ALL_QUICK_PROMPTS: QuickPrompt[] = [
+  {
+    title: "DBeaver SSL Path",
+    desc: "SSL certificate configuration path for MySQL.",
+    text: "What is the exact UI path to manage SSL certificates for a MySQL driver?",
+    docKeywords: ["dbeaver"]
+  },
+  {
+    title: "DBeaver Secrets",
+    desc: "Learn something unique or surprising about DBeaver!",
+    text: "Tell me something surprising about DBeaver!",
+    docKeywords: ["dbeaver"]
+  },
+  {
+    title: "Agentic RAG Survey",
+    desc: "How does the RAG pipeline evaluate intent and groundedness?",
+    text: "How does the RAG pipeline evaluate intent and groundedness?",
+    docKeywords: ["agentic", "rag"]
+  },
+  {
+    title: "Surface Code Logic",
+    desc: "Logical error rate scaling vs distance in codes.",
+    text: "Explain the relationship between 'distance' and 'logical error rate' in surface codes.",
+    docKeywords: ["surface", "quantum"]
+  },
+  {
+    title: "Decolonial Axiology",
+    desc: "The author's framework definition of coloniality.",
+    text: "How does the author define the 'Axiological' framework of coloniality?",
+    docKeywords: ["sai deepak", "bharat"]
+  },
+  {
+    title: "Sanderson's Metal",
+    desc: "Kelsier's plan for the Eleventh Metal against the Lord Ruler.",
+    text: "What was Kelsier's specific plan for utilizing the Eleventh Metal against the Lord Ruler?",
+    docKeywords: ["final empire", "sanderson"]
+  },
+  {
+    title: "MLLM Adversarial",
+    desc: "Methods used to compromise multimodal LLMs.",
+    text: "What are the primary methods discussed for executing adversarial attacks on Multimodal Large Language Models?",
+    docKeywords: ["adversarial", "multimodal"]
+  },
+  {
+    title: "Econ Nowcasting",
+    desc: "Advantages of nowcasting vs traditional indicators.",
+    text: "How does Anthropic's report explain the advantages of nowcasting over traditional economic indicators?",
+    docKeywords: ["anthropic", "nowcasting", "econ"]
+  },
+  {
+    title: "Lifelong RL Memory",
+    desc: "Using generative memory to solve catastrophic forgetting.",
+    text: "Explain how generative memory is utilized in lifelong reinforcement learning to mitigate catastrophic forgetting.",
+    docKeywords: ["lifelong", "reinforcement", "memory"]
+  },
+  {
+    title: "CV Code Generation",
+    desc: "Deep learning approach for source code generation in CV.",
+    text: "What deep learning architectures are proposed for generating source code for computer vision systems?",
+    docKeywords: ["source code", "computer vision", "learning-based"]
+  },
+  {
+    title: "Latin America History",
+    desc: "Historical resources exploited in Latin America.",
+    text: "According to Eduardo Galeano, what were the primary historical resources exploited in Latin America and their impact?",
+    docKeywords: ["open veins", "galeano", "latin america"]
+  },
+  {
+    title: "Open Addressing Bounds",
+    desc: "Bounds on lookup time and probe sequences.",
+    text: "What are the optimal bounds for open addressing hash tables without key reordering?",
+    docKeywords: ["open addressing", "reordering"]
+  },
+  {
+    title: "Russia's Geography",
+    desc: "How barriers and plains shape geopolitics.",
+    text: "How do the geographic barriers of Russia, such as the North European Plain, shape its geopolitical strategy according to Tim Marshall?",
+    docKeywords: ["geography", "maps", "tim marshall"]
+  }
+];
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -170,6 +259,9 @@ export default function Home() {
   const [uploadStatus, setUploadStatus] = useState("");
   const [documents, setDocuments] = useState<{ filename: string; size_bytes: number; chunks_count: number; status: string; thread_id?: string }[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
+  const [suggestedPrompts, setSuggestedPrompts] = useState<QuickPrompt[]>(() => {
+    return [...ALL_QUICK_PROMPTS].sort(() => Math.random() - 0.5).slice(0, 3);
+  });
 
   const fetchDocuments = async () => {
     setLoadingDocs(true);
@@ -197,6 +289,33 @@ export default function Home() {
     } catch (err) {
       console.error("Failed to fetch session files:", err);
     }
+  };
+
+  const selectSuggestedPrompts = () => {
+    const allDocs = [...documents, ...sessionFiles];
+    
+    let matching = ALL_QUICK_PROMPTS.filter(prompt => {
+      return allDocs.some(doc => {
+        const name = doc.filename.toLowerCase();
+        return prompt.docKeywords.some(keyword => name.includes(keyword));
+      });
+    });
+
+    const shuffleArray = <T,>(arr: T[]): T[] => {
+      return [...arr].sort(() => Math.random() - 0.5);
+    };
+
+    let selected: QuickPrompt[] = [];
+    if (matching.length >= 3) {
+      selected = shuffleArray(matching).slice(0, 3);
+    } else {
+      selected = [...matching];
+      const remaining = ALL_QUICK_PROMPTS.filter(p => !matching.includes(p));
+      const shuffledRemaining = shuffleArray(remaining);
+      selected = [...selected, ...shuffledRemaining.slice(0, 3 - selected.length)];
+    }
+
+    setSuggestedPrompts(selected);
   };
 
   const handleTemporalFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -367,6 +486,14 @@ export default function Home() {
       return () => clearTimeout(timer);
     }
   }, [sessionFiles]);
+
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
+
+  useEffect(() => {
+    selectSuggestedPrompts();
+  }, [documents, sessionFiles]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -968,25 +1095,23 @@ export default function Home() {
                 Cognitive Retrieval & Orchestration System is online.
               </p>
 
+              {/* Quick Prompts Section Header */}
+              <div className="flex items-center justify-between w-full max-w-4xl px-4 mt-6 mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                <span>Suggested Prompts</span>
+                <button
+                  type="button"
+                  onClick={selectSuggestedPrompts}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-white/5 hover:border-white/10 bg-white/[0.02] hover:bg-white/[0.06] text-gray-400 hover:text-white transition-all cursor-pointer active:scale-95 text-[10px]"
+                  title="Shuffle Prompts"
+                >
+                  <RefreshCw size={11} className="text-gray-400 group-hover:rotate-180 transition-transform duration-500" />
+                  <span>Shuffle</span>
+                </button>
+              </div>
+
               {/* Quick Prompts Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-2xl w-full mt-2 px-4">
-                {[
-                  {
-                    title: "DBeaver & AlloyDB",
-                    desc: "Explain DBeaver's AlloyDB & MySQL support.",
-                    text: "Tell me something surprising about DBeaver!"
-                  },
-                  {
-                    title: "Ingestion Pipeline",
-                    desc: "How are CSV, PDF, and Markdown files processed?",
-                    text: "How does the document ingestion pipeline chunk files?"
-                  },
-                  {
-                    title: "Groundedness Evaluation",
-                    desc: "Explain the groundness and sufficiency routing.",
-                    text: "How does the RAG pipeline evaluate intent and groundedness?"
-                  }
-                ].map((card, i) => (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl w-full px-4">
+                {suggestedPrompts.map((card, i) => (
                   <button
                     key={i}
                     type="button"
