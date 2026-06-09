@@ -260,7 +260,7 @@ export default function Home() {
   const [documents, setDocuments] = useState<{ filename: string; size_bytes: number; chunks_count: number; status: string; thread_id?: string }[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [suggestedPrompts, setSuggestedPrompts] = useState<QuickPrompt[]>(() => {
-    return [...ALL_QUICK_PROMPTS].sort(() => Math.random() - 0.5).slice(0, 3);
+    return ALL_QUICK_PROMPTS.slice(0, 3);
   });
 
   const fetchDocuments = async () => {
