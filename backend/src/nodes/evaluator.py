@@ -1,52 +1,48 @@
-import os
 import json
-from langchain_groq import ChatGroq
+
+from langchain_core.prompts import ChatPromptTemplate
 from src.state import AgentState
-from dotenv import load_dotenv
+from src.log_utils import logger
+from src.llm import get_chat_model
 
-# 1. Ensure the API key is actually in memory for this process
-load_dotenv()
-
-# 2. Use the standard 8b-instant
-llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0, max_retries=3)
+llm = get_chat_model(temperature=0, max_retries=3)
 
 
 def parse_json_response(content: str) -> dict:
     content = content.strip()
     if content.startswith("```"):
-        # Remove ```json ... ``` tags if present
         nl = content.find("\n")
         if nl != -1:
             content = content[nl:]
         if content.endswith("```"):
             content = content[:-3]
     content = content.strip()
-    
+
     try:
         return json.loads(content)
     except Exception as e:
-        print(f"--- [EVALUATOR JSON ERROR] Fallback: {e}. Raw content: {content} ---")
+        logger.error(f"JSON parse error: {e}. Raw: {content}")
         return {
             "relevant": False,
             "sufficient": False,
             "grounded": False,
             "confidence": 0.0,
-            "retry_needed": True
+            "retry_needed": True,
         }
+
 
 async def evaluate_retrieval(state: AgentState):
     query = state["search_query"]
     context = state["context"]
 
-    # Handle case where context is completely empty due to thresholding
     if not context.strip():
-        print("--- [EVALUATING] Context is empty (Failed retrieval thresholding) ---")
+        logger.info("Context is empty (Failed retrieval thresholding)")
         evaluation = {
             "relevant": False,
             "sufficient": False,
             "grounded": False,
             "confidence": 0.0,
-            "retry_needed": True
+            "retry_needed": True,
         }
         next_step = "actor" if state["revision_count"] >= 3 else "rewrite"
         return {"critic_score": 0.0, "evaluation": evaluation, "next_step": next_step}
@@ -71,15 +67,12 @@ async def evaluate_retrieval(state: AgentState):
     response = await llm.ainvoke(prompt)
     evaluation = parse_json_response(response.content)
 
-    # Backward compatibility
     score = evaluation.get("confidence", 0.5)
-    
-    # Decide next step based on sufficiency/retry needs and revision limits
+
     if evaluation.get("retry_needed") and state["revision_count"] < 3:
         next_step = "rewrite"
     else:
         next_step = "actor"
 
-    print(f"--- [EVALUATING] Structured evaluation: {evaluation} | Next: {next_step} ---")
-
+    logger.info(f"Evaluation: {evaluation} | Next: {next_step}")
     return {"critic_score": score, "evaluation": evaluation, "next_step": next_step}

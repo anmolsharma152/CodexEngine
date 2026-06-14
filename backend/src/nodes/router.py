@@ -1,19 +1,14 @@
-from dotenv import load_dotenv
-from langchain_groq import ChatGroq
-
 from src.state import AgentState
+from src.log_utils import logger
+from src.llm import get_chat_model
 
-load_dotenv()
-
-# Blazing-fast 8B model with 0.0 temperature for deterministic routing
-router_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0.0, max_retries=3)
+router_llm = get_chat_model(temperature=0.0, max_retries=3)
 
 
 async def analyze_intent(state: AgentState):
-    print("\n--- [ROUTER] Analyzing User Intent ---")
+    logger.info("Analyzing User Intent")
 
     raw_query = state["user_query"]
-    # Truncate to prevent token burn on large pasted payloads (e.g. logs)
     query_sample = raw_query[:1500] + "\n[Truncated for Routing...]" if len(raw_query) > 1500 else raw_query
 
     prompt = f"""
@@ -39,9 +34,8 @@ async def analyze_intent(state: AgentState):
     response = await router_llm.ainvoke(prompt)
     intent = response.content.strip().lower()
 
-    # The ultimate safety net: If it hallucinates or gets confused, force it to check the database.
     if intent not in ["direct_casual", "direct_parametric", "retrieval_required"]:
         intent = "retrieval_required"
 
-    print(f"--- [ROUTER] Intent Classified: {intent.upper()} ---")
+    logger.info(f"Intent Classified: {intent.upper()}")
     return {"intent": intent}

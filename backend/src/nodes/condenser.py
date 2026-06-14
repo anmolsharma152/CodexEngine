@@ -1,13 +1,16 @@
-from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from src.state import AgentState
+from src.log_utils import logger
+from src.llm import get_chat_model
+
+llm = get_chat_model(temperature=0, max_retries=3)
 
 
 async def condense_question_node(state: AgentState):
-    """Resolves pronouns using chat history via Groq."""
     history = state["messages"][:-1]
 
     if not history:
+        logger.info("No history — skipping condensation")
         return {"search_query": state["user_query"]}
 
     prompt = ChatPromptTemplate.from_template("""
@@ -19,12 +22,7 @@ async def condense_question_node(state: AgentState):
         Standalone Question:
     """)
 
-    # Use Groq llama-3.1-8b for fast resolution
-    llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0, max_retries=3)
     chain = prompt | llm
-
     result = await chain.ainvoke({"history": history, "user_query": state["user_query"]})
-
-    print(f"\n--- [MEMORY] Resolved Query: {result.content} ---")
-
+    logger.info(f"Resolved Query: {result.content}")
     return {"search_query": result.content}
