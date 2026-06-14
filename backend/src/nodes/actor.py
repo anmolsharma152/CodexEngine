@@ -42,7 +42,7 @@ Synthesize your response using the provided RETRIEVED CONTEXT below when relevan
 CRITICAL EXECUTION & FORMATTING LAWS:
 1. If the RETRIEVED CONTEXT contains information relevant to the user's question, use it. If it is irrelevant or insufficient, IGNORE IT and answer from your internal knowledge.
 2. PROVENANCE RULE:
-    - If a fact explicitly came from the RETRIEVED CONTEXT, attach a compact citation link after the sentence using this syntax: `[p. 5](citation://source?page=5)`, `[r. 3](citation://source?row=3)`, or `[doc](citation://source)`. Replace "source" with the actual source name from the context marker.
+    - If a fact explicitly came from the RETRIEVED CONTEXT, attach its compact citation marker (e.g., `[p. 5]`, `[r. 3]`, `[doc]`, `[web]`) after the sentence.
     - Do NOT invent or attach citations for facts not present in the RETRIEVED CONTEXT.
     - If you used ANY retrieved context in your answer (evidenced by at least one citation), do NOT append the Internal AI Knowledge tag. The citations themselves are sufficient provenance.
     - Only if you used ZERO facts from the RETRIEVED CONTEXT (the context was entirely irrelevant) append "[Source: Internal AI Knowledge]" at the end.

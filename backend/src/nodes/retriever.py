@@ -99,7 +99,7 @@ async def _web_search(query_text: str) -> list[dict]:
         docs = []
         for r in results:
             content = f"Title: {r.get('title', '')}\nSnippet: {r.get('body', '')}\nURL: {r.get('href', '')}"
-            docs.append({"content": content, "metadata": {"source": "web", "title": r.get("title", ""), "url": r.get("href", "")}, "score": 0.5, "source": "web"})
+            docs.append({"content": content, "metadata": {"source": "web", "title": r.get("title", "")}, "score": 0.5, "source": "web"})
         logger.info(f"Web search returned {len(docs)} results")
         return docs
     except ImportError:
@@ -116,14 +116,13 @@ def _format_chunks(docs: list[dict]) -> str:
         meta = d.get("metadata", {})
         source = meta.get("source", "Unknown Source")
         if d.get("source") == "web":
-            url = meta.get("url", "web")
-            ref = f"[web](citation://{url})"
+            ref = "[web]"
         elif "page" in meta:
-            ref = f"[p. {meta['page']}](citation://{source}?page={meta['page']})"
+            ref = f"[p. {meta['page']}]"
         elif "row" in meta:
-            ref = f"[r. {meta['row']}](citation://{source}?row={meta['row']})"
+            ref = f"[r. {meta['row']}]"
         else:
-            ref = f"[doc](citation://{source})"
+            ref = "[doc]"
         formatted.append(f"{ref}\n{d['content']}")
     return "\n\n".join(formatted)
 
