@@ -45,6 +45,16 @@ def ensure_schema():
                 pinned BOOLEAN DEFAULT FALSE
             );
         """))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS prose_chunks (
+                id BIGSERIAL PRIMARY KEY,
+                content TEXT,
+                metadata JSONB,
+                embedding vector(384)
+            );
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_prose_chunks_metadata ON prose_chunks USING GIN (metadata);"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_threads_user_id ON threads (user_id);"))
         conn.commit()
 
 
