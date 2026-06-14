@@ -1,11 +1,10 @@
-from dotenv import load_dotenv
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, BaseMessage
-from langchain_groq import ChatGroq
 
 from src.state import AgentState
+from src.log_utils import logger
+from src.llm import get_chat_model
 
-load_dotenv()
-llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.3, max_retries=3)
+llm = get_chat_model(model="llama-3.3-70b-versatile", temperature=0.3, max_retries=3)
 
 
 async def generate_answer(state: AgentState):
@@ -30,24 +29,27 @@ CRITICAL FORMATTING LAWS:
 2. Put blank lines between paragraphs and list items to keep the response airy and easy to scan.
 3. Answer comprehensively, clearly, and immediately after the tag. Do not use speaker labels."""
     else:
-        # retrieval_required / research path
-        is_sufficient = evaluation.get("sufficient", False) or evaluation.get("relevant", False)
-        
+        is_sufficient = evaluation.get("sufficient", False)
+
         if is_sufficient and context.strip():
             sys_instructions = f"""You are CodexEngine, an elite corporate RAG analyst.
-You MUST synthesize your response using ONLY the provided RETRIEVED CONTEXT below.
+Synthesize your response using the provided RETRIEVED CONTEXT below when relevant.
 
 === RETRIEVED CONTEXT ===
 {context}
 =========================
 
 CRITICAL EXECUTION & FORMATTING LAWS:
-1. Write a detailed response based strictly on the RETRIEVED CONTEXT. Do not make assumptions or use external knowledge.
-2. FORMAT FOR HIGH READABILITY: 
+1. If the RETRIEVED CONTEXT contains information relevant to the user's question, use it. If it is irrelevant or insufficient, IGNORE IT and answer from your internal knowledge.
+2. PROVENANCE RULE:
+   - If a fact explicitly came from the RETRIEVED CONTEXT, attach its compact citation marker (e.g., `[p. 5]`, `[r. 3]`, `[doc]`) after the sentence.
+   - Do NOT invent or attach citations for facts not present in the RETRIEVED CONTEXT.
+   - If you used ANY retrieved context in your answer (evidenced by at least one citation), do NOT append the Internal AI Knowledge tag. The citations themselves are sufficient provenance.
+   - Only if you used ZERO facts from the RETRIEVED CONTEXT (the context was entirely irrelevant) append "**[Source: Internal AI Knowledge]**" at the end.
+3. FORMAT FOR HIGH READABILITY:
    - Break information into small, digestible paragraphs (maximum 2-3 sentences per paragraph).
    - Use bullet points or numbered lists extensively when listing details, features, steps, or facts.
    - Insert empty lines between all paragraphs and list items to avoid dense walls of text.
-3. You MUST append an inline citation after every factual sentence or list item. Use the exact markdown link reference format (including the citation:// protocol, e.g. `[Source: doc.pdf | Page: X](citation://...)`) exactly as it appears at the start of the matching chunk in the RETRIEVED CONTEXT.
 4. Begin your response immediately. Do not use speaker labels."""
         else:
             sys_instructions = """You are CodexEngine, an elite AI knowledge agent.
@@ -72,7 +74,7 @@ CRITICAL EXECUTION & FORMATTING LAWS:
         else:
             structured_messages.append(m)
 
-    print(f"\n--- [ACTOR] Generating Response for {intent.upper()} Mode ---")
+    logger.info(f"Generating Response for {intent.upper()} Mode")
     response = await llm.ainvoke(structured_messages)
 
     return {"response": response.content, "messages": [("assistant", response.content)]}
