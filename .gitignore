@@ -1,17 +1,40 @@
+# Environment
 .env
 .env.*
 !.env.example
+
+# Python
 venv/
-chroma_db/
-*/__pycache__/
+backend/venv/
+__pycache__/
 *.pyc
+.pytest_cache/
+
+# IDE
 .DS_Store
-chat_history.json
-.streamlit/
-archive/
+*.sublime-workspace
+*.sublime-project
+.idea/
+.vscode/
+
+# Backend data & logs
 data/
+*.log
+tmp/
+
+# Secrets & keys
+*.secret
+*.key
+*.pem
+secrets/
+
+# Frontend
+codex-ui/node_modules/
+codex-ui/.next/
+
+# Vector stores
+chroma_db/
 archives/chroma_db_old/
-*.sublime-workspace
-*.sublime-project
-*.sublime-workspace
-*.sublime-project
+
+# LangSmith
+.langsmith*
