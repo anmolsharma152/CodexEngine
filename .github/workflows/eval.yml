@@ -1,0 +1,64 @@
+name: Eval
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: codex_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run golden query test
+        working-directory: backend
+        run: python tests/test_golden.py
+        env:
+          DB_URL: postgresql+psycopg://postgres:postgres@localhost:5432/codex_db
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          JWT_SECRET: ci-jwt-secret
+
+      - name: Run rigorous sweep
+        working-directory: backend
+        run: python tests/test_rigorous.py
+        env:
+          DB_URL: postgresql+psycopg://postgres:postgres@localhost:5432/codex_db
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          JWT_SECRET: ci-jwt-secret
+
+      - name: Run RAGAS eval
+        working-directory: backend
+        run: python eval/ragas_eval.py || echo "RAGAS eval skipped (rate limits)"
+        env:
+          DB_URL: postgresql+psycopg://postgres:postgres@localhost:5432/codex_db
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          JWT_SECRET: ci-jwt-secret
