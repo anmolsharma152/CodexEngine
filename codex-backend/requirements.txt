@@ -31,5 +31,4 @@ langsmith>=0.1.0
 
 # --- Infrastructure ---
 python-dotenv>=1.0.1
-pyjwt>=2.8.0
-bcrypt>=4.1.0
+supabase>=2.0.0

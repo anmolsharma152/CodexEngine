@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { createClient } from "@supabase/supabase-js";
 import {
   MessageSquare,
   Plus,
@@ -25,6 +26,11 @@ import {
   RefreshCw,
   LogOut,
 } from "lucide-react";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+);
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -108,12 +114,14 @@ export default function Home() {
     setIsMounted(true);
   }, []);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
-  const [authUsername, setAuthUsername] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authRegUsername, setAuthRegUsername] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setToken(null);
     setUsername(null);
     setThreads([]);
@@ -140,31 +148,40 @@ export default function Home() {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
-    if (!authUsername.trim() || !authPassword.trim()) {
-      setAuthError("Username and password are required.");
+    const email = authEmail.trim();
+    const password = authPassword;
+    if (!email || !password) {
+      setAuthError("Email and password are required.");
       return;
     }
     setAuthLoading(true);
     try {
-      const endpoint = authMode === "login" ? "login" : "register";
-      const res = await fetch(`${API_BASE}/${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: authUsername.trim(), password: authPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || `${authMode === "login" ? "Login" : "Registration"} failed`);
-      }
-
       if (authMode === "login") {
-        setToken(data.access_token);
-        setUsername(data.username);
-        localStorage.setItem("codex_auth_token", data.access_token);
-        localStorage.setItem("codex_auth_user", data.username);
-        setAuthUsername("");
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error || !data.session) throw new Error(error?.message || "Login failed");
+
+        const token = data.session.access_token;
+        const meRes = await fetch(`${API_BASE}/user/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const meData = await meRes.json();
+
+        setToken(token);
+        setUsername(meData.username || meData.email);
+        localStorage.setItem("codex_auth_token", token);
+        localStorage.setItem("codex_auth_user", meData.username || meData.email);
+        setAuthEmail("");
         setAuthPassword("");
+        setAuthRegUsername("");
       } else {
+        const username = authRegUsername.trim() || email.split("@")[0];
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { username } },
+        });
+        if (error) throw new Error(error.message);
+
         setAuthMode("login");
         setAuthError("Registered successfully! Please log in.");
       }
@@ -1024,17 +1041,32 @@ export default function Home() {
               <form onSubmit={handleAuth} className="space-y-4">
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-                    Username
+                    Email
                   </label>
                   <input
-                    type="text"
-                    value={authUsername}
-                    onChange={(e) => setAuthUsername(e.target.value)}
+                    type="email"
+                    value={authEmail}
+                    onChange={(e) => setAuthEmail(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/5 focus:border-white/20 text-white outline-none transition-all text-xs font-medium"
-                    placeholder="e.g. recruiter_demo"
+                    placeholder="e.g. you@example.com"
                     required
                   />
                 </div>
+
+                {authMode === "register" && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+                      Username
+                    </label>
+                    <input
+                      type="text"
+                      value={authRegUsername}
+                      onChange={(e) => setAuthRegUsername(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/5 focus:border-white/20 text-white outline-none transition-all text-xs font-medium"
+                      placeholder="e.g. recruiter_demo"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">

@@ -2,12 +2,9 @@ import os
 import asyncio
 import uuid
 import json
-import shutil
+import tempfile
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
 
-import jwt
-import bcrypt
 from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -29,99 +26,99 @@ from src.nodes.nodes import (
     rewrite_query,
 )
 from src.log_utils import logger
+from src.supabase_client import supabase
 
 load_dotenv()
 DB_URL = os.environ["DB_URL"]
 engine = create_engine(DB_URL)
 
 
-def create_auth_tables():
+def ensure_schema():
     with engine.connect() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-        conn.execute(
-            text("""
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(100) UNIQUE NOT NULL,
-                password_hash VARCHAR(255) NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-        """)
-        )
-        conn.execute(
-            text("""
+        conn.execute(text("""
             CREATE TABLE IF NOT EXISTS threads (
                 id VARCHAR(255) PRIMARY KEY,
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                user_id UUID NOT NULL,
                 title VARCHAR(255) NOT NULL,
                 timestamp BIGINT NOT NULL,
                 pinned BOOLEAN DEFAULT FALSE
             );
-        """)
-        )
+        """))
         conn.commit()
 
 
-create_auth_tables()
+ensure_schema()
 
-# Security Helpers
-JWT_SECRET = os.environ.get("JWT_SECRET", "codex-engine-recruiter-jwt-secret-key-928371")
-JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = 24
 security_scheme = HTTPBearer()
 
 
-def hash_password(password: str) -> str:
-    salt = bcrypt.gensalt()
-    return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
-
-
-def verify_password(password: str, hashed_password: str) -> bool:
-    try:
-        return bcrypt.checkpw(password.encode("utf-8"), hashed_password.encode("utf-8"))
-    except Exception:
-        return False
-
-
-def create_access_token(user_id: int, username: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
-    to_encode = {"sub": str(user_id), "username": username, "exp": expire}
-    return jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
-
-
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security_scheme)):
-    token = credentials.credentials
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user_id: str = payload.get("sub")
-        username: str = payload.get("username")
-        if user_id is None or username is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials",
-            )
-        return {"id": int(user_id), "username": username}
-    except jwt.ExpiredSignatureError:
+        user = supabase.auth.get_user(credentials.credentials).user
+        return user
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired",
-        )
-    except jwt.PyJWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
+            detail="Invalid or expired token",
         )
 
 
-def verify_thread_ownership(thread_id: str, user_id: int):
+def verify_thread_ownership(thread_id: str, user_id: str):
     query = text("SELECT user_id FROM threads WHERE id = :thread_id;")
     with engine.connect() as conn:
         res = conn.execute(query, {"thread_id": thread_id}).fetchone()
-        if res and res[0] != user_id:
+        if res and str(res[0]) != str(user_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Forbidden: You do not own this thread",
             )
+
+
+STORAGE_BUCKET = "documents"
+
+
+def _storage_path(user_id: str, filename: str, thread_id: str | None = None) -> str:
+    if thread_id:
+        return f"{user_id}/{thread_id}/{filename}"
+    return f"{user_id}/{filename}"
+
+
+def _download_from_storage(storage_path: str) -> str | None:
+    try:
+        data = supabase.storage.from_(STORAGE_BUCKET).download(storage_path)
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(storage_path)[1])
+        tmp.write(data)
+        tmp.close()
+        return tmp.name
+    except Exception as e:
+        logger.error(f"Failed to download {storage_path} from storage: {e}")
+        return None
+
+
+def _list_storage_files(prefix: str) -> list[dict]:
+    try:
+        objects = supabase.storage.from_(STORAGE_BUCKET).list(prefix)
+        files = []
+        for obj in objects:
+            name = obj.get("name")
+            if name and not name.endswith("/"):
+                files.append({
+                    "filename": name,
+                    "size_bytes": obj.get("metadata", {}).get("size", 0),
+                    "updated_at": obj.get("updated_at", ""),
+                })
+        return files
+    except Exception as e:
+        logger.error(f"Failed to list storage files under {prefix}: {e}")
+        return []
+
+
+def _remove_storage_paths(paths: list[str]):
+    try:
+        supabase.storage.from_(STORAGE_BUCKET).remove(paths)
+    except Exception as e:
+        logger.error(f"Failed to remove storage paths {paths}: {e}")
 
 
 # Graph definition
@@ -166,7 +163,6 @@ async def lifespan(app: FastAPI):
 
 # FastAPI app
 app = FastAPI(title="CodexEngine V4 API", lifespan=lifespan)
-# CORS
 ALLOWED_ORIGINS = os.environ.get(
     "ALLOWED_ORIGINS",
     "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001",
@@ -182,9 +178,10 @@ app.add_middleware(
 
 
 # Schemas
-class RegisterRequest(BaseModel):
-    username: str
+class AuthRequest(BaseModel):
+    email: str
     password: str
+    username: str | None = None
 
 
 class SaveThreadRequest(BaseModel):
@@ -201,48 +198,56 @@ class ChatRequest(BaseModel):
 
 # Endpoints
 @app.post("/register")
-async def register_endpoint(request: RegisterRequest):
-    username = request.username.strip()
+async def register_endpoint(request: AuthRequest):
+    email = request.email.strip().lower()
     password = request.password
-    if not username or not password:
-        return JSONResponse(status_code=400, content={"message": "Username and password are required"})
-
-    query = text("SELECT id FROM users WHERE username = :username;")
-    with engine.connect() as conn:
-        res = conn.execute(query, {"username": username}).fetchone()
-        if res:
-            return JSONResponse(status_code=400, content={"message": "Username already exists"})
-        hashed = hash_password(password)
-        insert_query = text("INSERT INTO users (username, password_hash) VALUES (:username, :hashed) RETURNING id;")
-        res_id = conn.execute(insert_query, {"username": username, "hashed": hashed}).fetchone()
-        conn.commit()
-        user_id = res_id[0]
-    logger.info(f"User registered: {username} (id={user_id})")
-    return {"message": "User registered successfully", "user_id": user_id}
+    username = request.username or email.split("@")[0]
+    if not email or not password:
+        return JSONResponse(status_code=400, content={"message": "Email and password are required"})
+    try:
+        resp = supabase.auth.sign_up({
+            "email": email,
+            "password": password,
+            "options": {"data": {"username": username}},
+        })
+        if resp.user:
+            logger.info(f"User registered: {email} ({resp.user.id})")
+            return {"message": "User registered successfully", "user_id": resp.user.id}
+        return JSONResponse(status_code=400, content={"message": "Registration failed"})
+    except Exception as e:
+        logger.error(f"Registration error: {e}")
+        return JSONResponse(status_code=400, content={"message": str(e)})
 
 
 @app.post("/login")
-async def login_endpoint(request: RegisterRequest):
-    username = request.username.strip()
+async def login_endpoint(request: AuthRequest):
+    email = request.email.strip().lower()
     password = request.password
-
-    query = text("SELECT id, username, password_hash FROM users WHERE username = :username;")
-    with engine.connect() as conn:
-        res = conn.execute(query, {"username": username}).fetchone()
-        if not res:
-            return JSONResponse(status_code=401, content={"message": "Invalid username or password"})
-        user_id, db_username, password_hash = res[0], res[1], res[2]
-        if not verify_password(password, password_hash):
-            return JSONResponse(status_code=401, content={"message": "Invalid username or password"})
-
-    token = create_access_token(user_id, db_username)
-    logger.info(f"User logged in: {db_username}")
-    return {"access_token": token, "token_type": "bearer", "username": db_username}
+    if not email or not password:
+        return JSONResponse(status_code=400, content={"message": "Email and password are required"})
+    try:
+        resp = supabase.auth.sign_in_with_password({"email": email, "password": password})
+        if resp.session:
+            logger.info(f"User logged in: {email}")
+            return {
+                "access_token": resp.session.access_token,
+                "token_type": "bearer",
+                "email": resp.user.email,
+                "username": resp.user.user_metadata.get("username", ""),
+            }
+        return JSONResponse(status_code=401, content={"message": "Invalid credentials"})
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        return JSONResponse(status_code=401, content={"message": str(e)})
 
 
 @app.get("/user/me")
 async def get_me_endpoint(current_user=Depends(get_current_user)):
-    return current_user
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "username": current_user.user_metadata.get("username", ""),
+    }
 
 
 @app.get("/threads")
@@ -250,7 +255,7 @@ async def get_threads_endpoint(current_user=Depends(get_current_user)):
     query = text("SELECT id, title, timestamp, pinned FROM threads WHERE user_id = :user_id ORDER BY pinned DESC, timestamp DESC;")
     threads = []
     with engine.connect() as conn:
-        res = conn.execute(query, {"user_id": current_user["id"]})
+        res = conn.execute(query, {"user_id": current_user.id})
         for r in res:
             threads.append({"id": r[0], "title": r[1], "timestamp": int(r[2]), "pinned": bool(r[3])})
     return {"threads": threads}
@@ -260,36 +265,31 @@ async def get_threads_endpoint(current_user=Depends(get_current_user)):
 async def save_thread_endpoint(request: SaveThreadRequest, current_user=Depends(get_current_user)):
     select_query = text("SELECT id FROM threads WHERE id = :id AND user_id = :user_id;")
     with engine.connect() as conn:
-        existing = conn.execute(select_query, {"id": request.id, "user_id": current_user["id"]}).fetchone()
+        existing = conn.execute(select_query, {"id": request.id, "user_id": current_user.id}).fetchone()
         if existing:
             update_query = text("UPDATE threads SET title = :title, timestamp = :timestamp, pinned = :pinned WHERE id = :id AND user_id = :user_id;")
-            conn.execute(update_query, {"title": request.title, "timestamp": request.timestamp, "pinned": request.pinned, "id": request.id, "user_id": current_user["id"]})
+            conn.execute(update_query, {"title": request.title, "timestamp": request.timestamp, "pinned": request.pinned, "id": request.id, "user_id": current_user.id})
         else:
             insert_query = text("INSERT INTO threads (id, user_id, title, timestamp, pinned) VALUES (:id, :user_id, :title, :timestamp, :pinned);")
-            conn.execute(insert_query, {"id": request.id, "user_id": current_user["id"], "title": request.title, "timestamp": request.timestamp, "pinned": request.pinned})
+            conn.execute(insert_query, {"id": request.id, "user_id": current_user.id, "title": request.title, "timestamp": request.timestamp, "pinned": request.pinned})
         conn.commit()
     return {"message": "Thread saved successfully"}
 
 
 @app.delete("/threads/{thread_id}")
 async def delete_thread_endpoint(thread_id: str, current_user=Depends(get_current_user)):
-    verify_query = text("SELECT id FROM threads WHERE id = :thread_id AND user_id = :user_id;")
+    verify_thread_ownership(thread_id, current_user.id)
     with engine.connect() as conn:
-        existing = conn.execute(verify_query, {"thread_id": thread_id, "user_id": current_user["id"]}).fetchone()
-        if not existing:
-            return JSONResponse(status_code=404, content={"message": "Thread not found"})
-        delete_query = text("DELETE FROM threads WHERE id = :thread_id AND user_id = :user_id;")
-        conn.execute(delete_query, {"thread_id": thread_id, "user_id": current_user["id"]})
-        delete_chunks = text("DELETE FROM prose_chunks WHERE metadata->>'thread_id' = :thread_id;")
-        conn.execute(delete_chunks, {"thread_id": thread_id})
+        conn.execute(text("DELETE FROM threads WHERE id = :thread_id AND user_id = :user_id;"), {"thread_id": thread_id, "user_id": current_user.id})
+        conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'thread_id' = :thread_id;"), {"thread_id": thread_id})
         conn.commit()
     return {"message": "Thread deleted successfully"}
 
 
 @app.post("/chat/stream")
 async def chat_stream_endpoint(request: ChatRequest, current_user=Depends(get_current_user)):
-    verify_thread_ownership(request.thread_id, current_user["id"])
-    config = {"configurable": {"thread_id": request.thread_id, "user_id": current_user["id"]}}
+    verify_thread_ownership(request.thread_id, current_user.id)
+    config = {"configurable": {"thread_id": request.thread_id, "user_id": current_user.id}}
 
     initial_state = {
         "user_query": request.message,
@@ -334,7 +334,7 @@ async def chat_stream_endpoint(request: ChatRequest, current_user=Depends(get_cu
 @app.get("/chat/{thread_id}/history")
 async def chat_history_endpoint(thread_id: str, current_user=Depends(get_current_user)):
     try:
-        verify_thread_ownership(thread_id, current_user["id"])
+        verify_thread_ownership(thread_id, current_user.id)
         config = {"configurable": {"thread_id": thread_id}}
         state = await app.state.agent_engine.aget_state(config)
         messages = state.values.get("messages", [])
@@ -355,18 +355,20 @@ async def chat_history_endpoint(thread_id: str, current_user=Depends(get_current
         return JSONResponse(status_code=500, content={"message": str(e)})
 
 
-os.makedirs("data/raw", exist_ok=True)
-
-
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...), current_user=Depends(get_current_user)):
     try:
-        filename = f"user_{current_user['id']}_{file.filename}"
-        file_path = f"data/raw/{filename}"
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        logger.info(f"Received file: {filename}")
-        await asyncio.to_thread(ingest_file, file_path, None, current_user["id"])
+        raw = await file.read()
+        storage_path = _storage_path(current_user.id, file.filename)
+        supabase.storage.from_(STORAGE_BUCKET).upload(storage_path, raw, {"content-type": file.content_type or "application/octet-stream"})
+
+        tmp_path = _download_from_storage(storage_path)
+        if not tmp_path:
+            return JSONResponse(status_code=500, content={"message": "Failed to retrieve uploaded file for ingestion"})
+        await asyncio.to_thread(ingest_file, tmp_path, None, current_user.id)
+        os.unlink(tmp_path)
+
+        logger.info(f"Uploaded and ingested: {file.filename}")
         return JSONResponse(status_code=200, content={"message": f"Successfully uploaded and ingested {file.filename}"})
     except Exception as e:
         logger.error(f"Upload failed: {e}")
@@ -376,92 +378,34 @@ async def upload_document(file: UploadFile = File(...), current_user=Depends(get
 @app.get("/documents")
 async def list_documents_endpoint(current_user=Depends(get_current_user)):
     try:
-        def _get():
-            raw_path = "data/raw"
-            files = []
-            with engine.connect() as conn:
-                res_threads = conn.execute(text("SELECT id FROM threads WHERE user_id = :uid;"), {"uid": current_user["id"]})
-                user_threads = {r[0] for r in res_threads}
+        prefix = f"{current_user.id}/"
+        storage_files = _list_storage_files(prefix)
 
-            def is_valid_uuid(val):
-                if not val:
-                    return False
-                try:
-                    uuid.UUID(str(val))
-                    return True
-                except ValueError:
-                    return False
-
-            user_prefix = f"user_{current_user['id']}_"
-            if os.path.exists(raw_path):
-                for fn in os.listdir(raw_path):
-                    if fn.endswith((".pdf", ".txt", ".md", ".csv")):
-                        is_owned = False
-                        if fn.startswith("user_"):
-                            if fn.startswith(user_prefix):
-                                is_owned = True
-                        elif "_" in fn:
-                            parts = fn.split("_", 1)
-                            potential_uuid = parts[0]
-                            if is_valid_uuid(potential_uuid):
-                                if potential_uuid in user_threads:
-                                    is_owned = True
-                            else:
-                                is_owned = True
-                        else:
-                            is_owned = True
-                        if is_owned:
-                            fpath = os.path.join(raw_path, fn)
-                            size = os.path.getsize(fpath)
-                            files.append({"filename": fn, "size_bytes": size, "chunks_count": 0, "status": "Pending"})
-
-            thread_ids_list = list(user_threads) if user_threads else ["dummy-placeholder-uuid"]
+        with engine.connect() as conn:
             sql = text("""
-                SELECT metadata->>'source' as source, metadata->>'thread_id' as thread_id, count(*) as count
+                SELECT metadata->>'source' as source, count(*) as count
                 FROM prose_chunks
-                WHERE (metadata->>'user_id' IS NULL AND metadata->>'thread_id' IS NULL)
-                   OR (metadata->>'user_id' = :user_id_str)
-                   OR (metadata->>'thread_id' = ANY(:thread_ids))
-                GROUP BY source, thread_id;
+                WHERE metadata->>'user_id' = :user_id
+                GROUP BY source;
             """)
-            db_counts = []
-            with engine.connect() as conn:
-                res = conn.execute(sql, {"user_id_str": str(current_user["id"]), "thread_ids": thread_ids_list})
-                for r in res:
-                    source, tid, count = r[0], r[1], r[2]
-                    if source:
-                        db_counts.append({"source": source, "thread_id": tid, "count": count})
+            res = conn.execute(sql, {"user_id": str(current_user.id)})
+            db_counts = {r[0]: r[1] for r in res}
 
-            merged = []
-            seen_keys = set()
-            for f in files:
-                fn = f["filename"]
-                clean_fn = fn[len(user_prefix):] if fn.startswith(user_prefix) else fn
-                prefix = None
-                display_name = clean_fn
-                if "_" in clean_fn:
-                    parts = clean_fn.split("_", 1)
-                    if is_valid_uuid(parts[0]):
-                        prefix = parts[0]
-                        display_name = parts[1]
-                count = 0
-                status = "Pending"
-                for db in db_counts:
-                    if db["source"] == display_name and db["thread_id"] == prefix:
-                        count = db["count"]
-                        status = "Ingested"
-                        break
-                seen_keys.add((display_name, prefix))
-                merged.append({"filename": display_name, "size_bytes": f["size_bytes"], "chunks_count": count, "status": status, "thread_id": prefix})
+        merged = []
+        for sf in storage_files:
+            fname = sf["filename"]
+            merged.append({
+                "filename": fname,
+                "size_bytes": sf["size_bytes"],
+                "chunks_count": db_counts.get(fname, 0),
+                "status": "Ingested" if fname in db_counts else "Pending",
+            })
 
-            for db in db_counts:
-                key = (db["source"], db["thread_id"])
-                if key not in seen_keys:
-                    merged.append({"filename": db["source"], "size_bytes": 0, "chunks_count": db["count"], "status": "Ingested (DB only)", "thread_id": db["thread_id"]})
-            return merged
+        for fname, cnt in db_counts.items():
+            if not any(m["filename"] == fname for m in merged):
+                merged.append({"filename": fname, "size_bytes": 0, "chunks_count": cnt, "status": "Ingested (DB only)"})
 
-        data = await asyncio.to_thread(_get)
-        return {"documents": data}
+        return {"documents": merged}
     except Exception as e:
         logger.error(f"Failed to list documents: {e}")
         return JSONResponse(status_code=500, content={"message": str(e)})
@@ -471,26 +415,22 @@ async def list_documents_endpoint(current_user=Depends(get_current_user)):
 async def delete_document_endpoint(filename: str, thread_id: str = None, current_user=Depends(get_current_user)):
     try:
         if thread_id:
-            verify_thread_ownership(thread_id, current_user["id"])
+            verify_thread_ownership(thread_id, current_user.id)
+            storage_path = _storage_path(current_user.id, filename, thread_id)
+        else:
+            storage_path = _storage_path(current_user.id, filename)
 
-        def _delete():
-            disk_deleted = False
-            user_prefix = f"user_{current_user['id']}_"
-            raw_path = f"data/raw/{user_prefix}{thread_id}_{filename}" if thread_id else f"data/raw/{user_prefix}{filename}"
-            if os.path.exists(raw_path):
-                os.remove(raw_path)
-                disk_deleted = True
-            with engine.connect() as conn:
-                if thread_id:
-                    res = conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'thread_id' = :tid"), {"fn": filename, "tid": thread_id})
-                else:
-                    res = conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'user_id' = :uid"), {"fn": filename, "uid": str(current_user["id"])})
-                conn.commit()
-                rowcount = res.rowcount
-            return disk_deleted, rowcount
+        _remove_storage_paths([storage_path])
 
-        disk_deleted, db_deleted = await asyncio.to_thread(_delete)
-        return {"message": f"Successfully deleted {filename}", "disk_deleted": disk_deleted, "db_chunks_deleted": db_deleted}
+        with engine.connect() as conn:
+            if thread_id:
+                res = conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'thread_id' = :tid"), {"fn": filename, "tid": thread_id})
+            else:
+                res = conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'user_id' = :uid"), {"fn": filename, "uid": str(current_user.id)})
+            conn.commit()
+            rowcount = res.rowcount
+
+        return {"message": f"Successfully deleted {filename}", "db_chunks_deleted": rowcount}
     except Exception as e:
         logger.error(f"Failed to delete document: {e}")
         return JSONResponse(status_code=500, content={"message": str(e)})
@@ -500,27 +440,27 @@ async def delete_document_endpoint(filename: str, thread_id: str = None, current
 async def reingest_document(filename: str, thread_id: str = None, current_user=Depends(get_current_user)):
     try:
         if thread_id:
-            verify_thread_ownership(thread_id, current_user["id"])
+            verify_thread_ownership(thread_id, current_user.id)
+            storage_path = _storage_path(current_user.id, filename, thread_id)
+        else:
+            storage_path = _storage_path(current_user.id, filename)
 
-        def _reingest():
-            user_prefix = f"user_{current_user['id']}_"
-            raw_path = f"data/raw/{user_prefix}{thread_id}_{filename}" if thread_id else f"data/raw/{user_prefix}{filename}"
-            if not os.path.exists(raw_path):
-                return False, 0
-            with engine.connect() as conn:
-                if thread_id:
-                    res = conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'thread_id' = :tid"), {"fn": filename, "tid": thread_id})
-                else:
-                    res = conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'user_id' = :uid"), {"fn": filename, "uid": str(current_user["id"])})
-                conn.commit()
-                rowcount = res.rowcount
-            ingest_file(raw_path, thread_id, current_user["id"])
-            return True, rowcount
+        tmp_path = _download_from_storage(storage_path)
+        if not tmp_path:
+            return JSONResponse(status_code=404, content={"message": "Source file not found in storage."})
 
-        success, db_deleted = await asyncio.to_thread(_reingest)
-        if not success:
-            return JSONResponse(status_code=404, content={"message": "Source file not found on disk."})
-        return {"message": f"Successfully re-ingested {filename}", "db_chunks_cleared": db_deleted}
+        with engine.connect() as conn:
+            if thread_id:
+                res = conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'thread_id' = :tid"), {"fn": filename, "tid": thread_id})
+            else:
+                res = conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'user_id' = :uid"), {"fn": filename, "uid": str(current_user.id)})
+            conn.commit()
+            rowcount = res.rowcount
+
+        await asyncio.to_thread(ingest_file, tmp_path, thread_id, current_user.id)
+        os.unlink(tmp_path)
+
+        return {"message": f"Successfully re-ingested {filename}", "db_chunks_cleared": rowcount}
     except Exception as e:
         logger.error(f"Failed to re-ingest document: {e}")
         return JSONResponse(status_code=500, content={"message": str(e)})
@@ -529,15 +469,18 @@ async def reingest_document(filename: str, thread_id: str = None, current_user=D
 @app.post("/upload/temporal")
 async def upload_temporal_document(thread_id: str, file: UploadFile = File(...), current_user=Depends(get_current_user)):
     try:
-        verify_thread_ownership(thread_id, current_user["id"])
-        os.makedirs("data/raw", exist_ok=True)
-        user_prefix = f"user_{current_user['id']}_"
-        filename = f"{user_prefix}{thread_id}_{file.filename}"
-        file_path = f"data/raw/{filename}"
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        logger.info(f"Temporal file: {filename} for thread: {thread_id}")
-        await asyncio.to_thread(ingest_file, file_path, thread_id, current_user["id"])
+        verify_thread_ownership(thread_id, current_user.id)
+        raw = await file.read()
+        storage_path = _storage_path(current_user.id, file.filename, thread_id)
+        supabase.storage.from_(STORAGE_BUCKET).upload(storage_path, raw, {"content-type": file.content_type or "application/octet-stream"})
+
+        tmp_path = _download_from_storage(storage_path)
+        if not tmp_path:
+            return JSONResponse(status_code=500, content={"message": "Failed to retrieve uploaded file for ingestion"})
+        await asyncio.to_thread(ingest_file, tmp_path, thread_id, current_user.id)
+        os.unlink(tmp_path)
+
+        logger.info(f"Temporal upload: {file.filename} for thread: {thread_id}")
         return JSONResponse(status_code=200, content={"message": f"Successfully uploaded and ingested {file.filename} temporally"})
     except Exception as e:
         logger.error(f"Temporal upload failed: {e}")
@@ -547,25 +490,19 @@ async def upload_temporal_document(thread_id: str, file: UploadFile = File(...),
 @app.delete("/chat/{thread_id}/temporal")
 async def delete_temporal_chunks_endpoint(thread_id: str, current_user=Depends(get_current_user)):
     try:
-        verify_thread_ownership(thread_id, current_user["id"])
+        verify_thread_ownership(thread_id, current_user.id)
+        prefix = f"{current_user.id}/{thread_id}/"
+        objects = supabase.storage.from_(STORAGE_BUCKET).list(prefix)
+        paths_to_remove = [f"{prefix}{o['name']}" for o in objects if o.get("name") and not o["name"].endswith("/")]
+        if paths_to_remove:
+            _remove_storage_paths(paths_to_remove)
 
-        def _delete():
-            user_prefix = f"user_{current_user['id']}_"
-            raw_path = "data/raw"
-            disk_deleted_count = 0
-            if os.path.exists(raw_path):
-                for fn in os.listdir(raw_path):
-                    if fn.startswith(f"{user_prefix}{thread_id}_"):
-                        os.remove(os.path.join(raw_path, fn))
-                        disk_deleted_count += 1
-            with engine.connect() as conn:
-                res = conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'thread_id' = :tid"), {"tid": thread_id})
-                conn.commit()
-                rowcount = res.rowcount
-            return disk_deleted_count, rowcount
+        with engine.connect() as conn:
+            res = conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'thread_id' = :tid"), {"tid": thread_id})
+            conn.commit()
+            rowcount = res.rowcount
 
-        disk_deleted, db_deleted = await asyncio.to_thread(_delete)
-        return {"message": f"Cleared temporal chunks for session {thread_id}", "disk_files_deleted": disk_deleted, "db_chunks_deleted": db_deleted}
+        return {"message": f"Cleared temporal chunks for session {thread_id}", "storage_files_deleted": len(paths_to_remove), "db_chunks_deleted": rowcount}
     except Exception as e:
         logger.error(f"Failed to clear temporal chunks: {e}")
         return JSONResponse(status_code=500, content={"message": str(e)})
