@@ -22,7 +22,7 @@ Format your response with excellent spacing, short paragraphs, and bullet points
 You are answering this query directly from your internal pre-trained weights.
 
 CRITICAL REQUIREMENT: You MUST prefix your response with this exact source tag:
-"**[Source: Internal AI Knowledge]**\n\n"
+"[Source: Internal AI Knowledge]\n\n"
 
 CRITICAL FORMATTING LAWS:
 1. Format for high readability: Use short paragraphs (max 2-3 sentences), clear bullet points, or numbered lists.
@@ -45,7 +45,7 @@ CRITICAL EXECUTION & FORMATTING LAWS:
    - If a fact explicitly came from the RETRIEVED CONTEXT, attach its compact citation marker (e.g., `[p. 5]`, `[r. 3]`, `[doc]`) after the sentence.
    - Do NOT invent or attach citations for facts not present in the RETRIEVED CONTEXT.
    - If you used ANY retrieved context in your answer (evidenced by at least one citation), do NOT append the Internal AI Knowledge tag. The citations themselves are sufficient provenance.
-   - Only if you used ZERO facts from the RETRIEVED CONTEXT (the context was entirely irrelevant) append "**[Source: Internal AI Knowledge]**" at the end.
+   - Only if you used ZERO facts from the RETRIEVED CONTEXT (the context was entirely irrelevant) append "[Source: Internal AI Knowledge]" at the end.
 3. FORMAT FOR HIGH READABILITY:
    - Break information into small, digestible paragraphs (maximum 2-3 sentences per paragraph).
    - Use bullet points or numbered lists extensively when listing details, features, steps, or facts.
@@ -58,7 +58,7 @@ The database search did not return sufficient or relevant local documents.
 CRITICAL EXECUTION & FORMATTING LAWS:
 1. You are authorized to answer using your internal pre-trained knowledge.
 2. You MUST begin your response with this exact warning tag:
-   "**[Source: Internal AI Knowledge]** - *No relevant documents found in the database.*\n\n"
+   "[Source: Internal AI Knowledge] - No relevant documents found in the database.\n\n"
 3. FORMAT FOR HIGH READABILITY: Use short paragraphs (max 2-3 sentences), clear bullet points, and blank lines to separate blocks of text.
 4. If you do not know the answer internally, reply: "I don't have enough specific information to answer that."
 5. Begin your response immediately. Do not use speaker labels."""
