@@ -1,15 +1,16 @@
 import sys, pathlib
-
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
 import os
 import re
 import csv
-import fitz  # PyMuPDF
+import json
+import fitz
 from sqlalchemy import create_engine, text
 from src.repositories.utils import get_embedding_function
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
-import json
+from src.log_utils import logger
 
 load_dotenv()
 engine = create_engine(os.getenv("DB_URL"))
@@ -20,145 +21,91 @@ def clean_text(t):
     return t.replace("\x00", "").strip()
 
 
-def ensure_table_exists():
-    # Ensure table has the metadata column
-    with engine.connect() as conn:
-        conn.execute(
-            text("""
-            CREATE TABLE IF NOT EXISTS prose_chunks (
-                id SERIAL PRIMARY KEY,
-                content TEXT NOT NULL,
-                embedding VECTOR(384),
-                metadata JSONB
-            );
-        """)
-        )
-        conn.commit()
-
-
-def ingest_file(file_path: str, thread_id: str = None):
-    ensure_table_exists()
+def ingest_file(file_path: str, thread_id: str = None, user_id: str = None):
     filename = os.path.basename(file_path)
-    # If temporal/attached, strip the thread_id prefix from filename for cleaner citations
-    citation_source = filename.split("_", 1)[1] if thread_id and filename.startswith(f"{thread_id}_") else filename
     ext = os.path.splitext(filename)[1].lower()
-    print(f"--- Ingesting Document: {filename} (Type: {ext}) ---")
+    logger.info(f"Ingesting Document: {filename} (Type: {ext})")
 
     if not os.path.exists(file_path):
-        print(f"Error: file not found at {file_path}")
+        logger.error(f"File not found at {file_path}")
         return
 
-    chunks_data = []  # List of tuples: (content_string, metadata_dict)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1024, chunk_overlap=200)
+    chunks_data = []
 
     if ext == ".pdf":
         try:
             doc = fitz.open(file_path)
-            splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
-            
-            for page_index in range(len(doc)):
-                page_num = page_index + 1
-                page = doc[page_index]
-                page_text = page.get_text()
-                cleaned = clean_text(page_text)
-                if not cleaned.strip():
-                    continue
-
-                # Split within the page
-                splits = splitter.split_text(cleaned)
-                for split in splits:
-                    if len(split.strip()) < 100:  # Skip trivial chunks
-                        continue
-                    meta = {"source": citation_source, "page": page_num}
-                    if thread_id:
-                        meta["thread_id"] = thread_id
-                    chunks_data.append((split, meta))
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                text = clean_text(page.get_text())
+                if text.strip():
+                    page_chunks = text_splitter.split_text(text)
+                    for chunk_text in page_chunks:
+                        chunks_data.append({
+                            "content": chunk_text,
+                            "metadata": {"source": filename, "page": page_num + 1, "thread_id": thread_id, "user_id": user_id}
+                        })
+            doc.close()
         except Exception as e:
-            print(f"❌ Failed to ingest PDF {filename} using PyMuPDF: {e}")
+            logger.error(f"Failed to ingest PDF {filename}: {e}")
             return
-
-    elif ext in [".txt", ".md"]:
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read()
-        cleaned = clean_text(content)
-        splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
-        splits = splitter.split_text(cleaned)
-        for split in splits:
-            if len(split.strip()) < 100:
-                continue
-            meta = {"source": citation_source}
-            if thread_id:
-                meta["thread_id"] = thread_id
-            chunks_data.append((split, meta))
 
     elif ext == ".csv":
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-            reader = csv.DictReader(f)
-            for i, row in enumerate(reader):
-                row_num = i + 1
-                row_str = " | ".join([f"{k}: {v}" for k, v in row.items() if v is not None])
-                if not row_str.strip():
-                    continue
-                meta = {"source": citation_source, "row": row_num}
-                if thread_id:
-                    meta["thread_id"] = thread_id
-                chunks_data.append((row_str, meta))
-
-    else:
-        # Fallback to plain text reading
         try:
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                content = f.read()
-            cleaned = clean_text(content)
-            splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=150)
-            splits = splitter.split_text(cleaned)
-            for split in splits:
-                if len(split.strip()) < 100:
-                    continue
-                meta = {"source": citation_source}
-                if thread_id:
-                    meta["thread_id"] = thread_id
-                chunks_data.append((split, meta))
+            with open(file_path, "r", encoding="utf-8-sig") as f:
+                reader = csv.DictReader(f)
+                for row_num, row in enumerate(reader, start=1):
+                    row_text = json.dumps(row, indent=2)
+                    chunks_data.append({
+                        "content": row_text,
+                        "metadata": {"source": filename, "row": row_num, "thread_id": thread_id, "user_id": user_id}
+                    })
         except Exception as e:
-            print(f"❌ Failed to ingest unsupported file type {filename}: {e}")
+            logger.error(f"Failed to ingest CSV {filename}: {e}")
             return
 
-    # Insert all chunk data into the database
-    if not chunks_data:
-        print(f"⚠️ No valid chunks extracted from {filename}.")
+    elif ext in (".txt", ".md"):
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            full_text = clean_text(f.read())
+        if full_text.strip():
+            txt_chunks = text_splitter.split_text(full_text)
+            for chunk_text in txt_chunks:
+                chunks_data.append({
+                    "content": chunk_text,
+                    "metadata": {"source": filename, "thread_id": thread_id, "user_id": user_id}
+                })
+    else:
+        logger.warning(f"Unsupported file type {filename}")
         return
 
-    print(f"Embedding and inserting {len(chunks_data)} chunks...")
+    if not chunks_data:
+        logger.warning(f"No valid chunks extracted from {filename}")
+        return
+
+    logger.info(f"Embedding and inserting {len(chunks_data)} chunks...")
+    texts = [c["content"] for c in chunks_data]
+    embeddings = ef.embed_documents(texts)
+
     with engine.connect() as conn:
-        for content, meta in chunks_data:
-            emb = ef.embed_query(content)
+        for chunk, emb in zip(chunks_data, embeddings):
             conn.execute(
-                text(
-                    "INSERT INTO prose_chunks (content, embedding, metadata) VALUES (:c, :e, :m)"
-                ),
-                {"c": content, "e": str(emb), "m": json.dumps(meta)},
+                text("INSERT INTO prose_chunks (content, metadata, embedding) VALUES (:content, :metadata, :embedding)"),
+                {"content": chunk["content"], "metadata": json.dumps(chunk["metadata"]), "embedding": str(emb)}
             )
         conn.commit()
 
-    print(f"✅ Ingestion of {filename} Complete.")
-
-
-def ingest_narrative():
-    # Process Files
-    raw_path = "data/raw"
-    if not os.path.exists(raw_path):
-        print(f"Creating directory: {raw_path}")
-        os.makedirs(raw_path, exist_ok=True)
-        return
-
-    for filename in os.listdir(raw_path):
-        # Support PDF, TXT, MD, CSV in modular ingestion
-        if not filename.endswith((".pdf", ".txt", ".md", ".csv")):
-            continue
-        file_path = os.path.join(raw_path, filename)
-        ingest_file(file_path)
-
-    print("✅ All Document Ingestion Complete.")
+    logger.info(f"Ingestion of {filename} Complete.")
 
 
 if __name__ == "__main__":
-    ingest_narrative()
+    raw_path = "data/raw"
+    if not os.path.exists(raw_path):
+        logger.info(f"Creating directory: {raw_path}")
+        os.makedirs(raw_path, exist_ok=True)
+
+    for fn in sorted(os.listdir(raw_path)):
+        fpath = os.path.join(raw_path, fn)
+        if os.path.isfile(fpath):
+            ingest_file(fpath)
+    logger.info("All Document Ingestion Complete.")
