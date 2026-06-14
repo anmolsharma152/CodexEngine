@@ -3,54 +3,154 @@ import asyncio
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 from src.state import AgentState
-from src.repositories.utils import get_embedding_function
+from src.repositories.utils import get_embedding_function, get_bm25_index, get_reranker, tokenize
+from src.log_utils import logger
 
 load_dotenv()
 
 engine = create_engine(os.getenv("DB_URL"))
 ef = get_embedding_function()
 
-
 SIMILARITY_THRESHOLD = 0.35
+VECTOR_TOP_K = 10
+BM25_TOP_K = 10
+FINAL_TOP_K = 5
+
+
+def _vector_search(query_emb: list[float], thread_id: str | None, user_id_str: str) -> list[dict]:
+    sql = text("""
+        SELECT content, metadata, embedding <=> :emb as distance FROM prose_chunks
+        WHERE (metadata->>'user_id' IS NULL AND metadata->>'thread_id' IS NULL)
+           OR (metadata->>'user_id' = :user_id)
+           OR (metadata->>'thread_id' = :thread_id)
+        ORDER BY distance LIMIT :limit;
+    """)
+    with engine.connect() as conn:
+        results = conn.execute(sql, {"emb": str(query_emb), "thread_id": thread_id, "user_id": user_id_str, "limit": VECTOR_TOP_K})
+        docs = []
+        for r in results:
+            content = r[0]
+            meta = r[1] or {}
+            distance = r[2]
+            similarity = 1.0 - distance
+            if similarity >= SIMILARITY_THRESHOLD:
+                docs.append({"content": content, "metadata": meta, "score": similarity, "source": "vector"})
+        return docs
+
+
+def _bm25_search(query_text: str) -> list[dict]:
+    try:
+        bm25, corpus, metadatas, doc_ids = get_bm25_index()
+        tokenized_query = tokenize(query_text)
+        scores = bm25.get_scores(tokenized_query)
+        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:BM25_TOP_K]
+        docs = []
+        for idx in top_indices:
+            if scores[idx] > 0:
+                docs.append({"content": corpus[idx], "metadata": dict(metadatas[idx]), "score": float(scores[idx]), "source": "bm25"})
+        return docs
+    except Exception as e:
+        logger.error(f"BM25 search failed: {e}")
+        return []
+
+
+def _rerank(query_text: str, candidates: list[dict]) -> list[dict]:
+    if len(candidates) <= FINAL_TOP_K:
+        return candidates
+    try:
+        reranker = get_reranker()
+        pairs = [(query_text, d["content"]) for d in candidates]
+        results = list(reranker.rerank(pairs))
+        reranked = []
+        for r in results:
+            for d in candidates:
+                if d["content"] == r.text and d not in reranked:
+                    d["rerank_score"] = r.score
+                    reranked.append(d)
+                    break
+        reranked.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
+        return reranked[:FINAL_TOP_K]
+    except Exception as e:
+        logger.warning(f"Reranker failed, using score-based merge: {e}")
+        candidates.sort(key=lambda x: x["score"], reverse=True)
+        return candidates[:FINAL_TOP_K]
+
+
+def _deduplicate(docs: list[dict]) -> list[dict]:
+    seen = set()
+    unique = []
+    for d in docs:
+        key = d["content"][:100]
+        if key not in seen:
+            seen.add(key)
+            unique.append(d)
+    return unique
+
+
+async def _web_search(query_text: str) -> list[dict]:
+    try:
+        from duckduckgo_search import DDGS
+
+        def _search():
+            with DDGS() as ddgs:
+                return list(ddgs.text(query_text, max_results=3))
+
+        results = await asyncio.to_thread(_search)
+        docs = []
+        for r in results:
+            content = f"Title: {r.get('title', '')}\nSnippet: {r.get('body', '')}\nURL: {r.get('href', '')}"
+            docs.append({"content": content, "metadata": {"source": "web", "title": r.get("title", ""), "url": r.get("href", "")}, "score": 0.5, "source": "web"})
+        logger.info(f"Web search returned {len(docs)} results")
+        return docs
+    except ImportError:
+        logger.warning("duckduckgo_search not installed, skipping web search")
+        return []
+    except Exception as e:
+        logger.error(f"Web search failed: {e}")
+        return []
+
+
+def _format_chunks(docs: list[dict]) -> str:
+    formatted = []
+    for d in docs:
+        meta = d.get("metadata", {})
+        source = meta.get("source", "Unknown Source")
+        if d.get("source") == "web":
+            url = meta.get("url", "web")
+            ref = f"[web](citation://{url})"
+        elif "page" in meta:
+            ref = f"[p. {meta['page']}](citation://{source}?page={meta['page']})"
+        elif "row" in meta:
+            ref = f"[r. {meta['row']}](citation://{source}?row={meta['row']})"
+        else:
+            ref = f"[doc](citation://{source})"
+        formatted.append(f"{ref}\n{d['content']}")
+    return "\n\n".join(formatted)
 
 
 async def retrieve_hybrid_context(state: AgentState, config=None):
-    # Use the mutable search_query
     current_search = state["search_query"]
     query_emb = ef.embed_query(current_search)
 
     thread_id = config.get("configurable", {}).get("thread_id", None) if config else None
+    user_id = config.get("configurable", {}).get("user_id", None) if config else None
+    user_id_str = str(user_id) if user_id is not None else ""
 
-    def _query_db():
-        sql = text("""
-            SELECT content, metadata, embedding <=> :emb as distance FROM prose_chunks 
-            WHERE (metadata->>'thread_id' IS NULL OR metadata->>'thread_id' = :thread_id)
-            ORDER BY distance LIMIT 5;
-        """)
-        with engine.connect() as conn:
-            results = conn.execute(sql, {"emb": str(query_emb), "thread_id": thread_id})
-            formatted_chunks = []
-            for r in results:
-                content = r[0]
-                meta = r[1] or {}
-                distance = r[2]
-                similarity = 1.0 - distance
-                
-                # Retrieval thresholding: Discard noisy matches below 0.35 similarity
-                if similarity < SIMILARITY_THRESHOLD:
-                    continue
-                
-                source = meta.get("source", "Unknown Source")
-                
-                if "page" in meta:
-                    ref = f"[Source: {source} | Page: {meta['page']}](citation://{source}?page={meta['page']})"
-                elif "row" in meta:
-                    ref = f"[Source: {source} | Row: {meta['row']}](citation://{source}?row={meta['row']})"
-                else:
-                    ref = f"[Source: {source}](citation://{source})"
-                
-                formatted_chunks.append(f"{ref}\n{content}")
-            return formatted_chunks
+    vector_docs = await asyncio.to_thread(_vector_search, query_emb, thread_id, user_id_str)
+    bm25_docs = await asyncio.to_thread(_bm25_search, current_search)
 
-    chunks = await asyncio.to_thread(_query_db)
-    return {"context": "\n\n".join(chunks), "next_step": "evaluate"}
+    all_candidates = _deduplicate(vector_docs + bm25_docs)
+
+    if not all_candidates:
+        logger.info("No local results — falling back to web search")
+        web_docs = await _web_search(current_search)
+        if web_docs:
+            context = _format_chunks(web_docs)
+            return {"context": context, "next_step": "evaluate"}
+        return {"context": "", "next_step": "evaluate"}
+
+    final_docs = _rerank(current_search, all_candidates)
+    context = _format_chunks(final_docs)
+
+    logger.info(f"Retrieved {len(vector_docs)} vector + {len(bm25_docs)} bm25 → {len(final_docs)} final")
+    return {"context": context, "next_step": "evaluate"}
