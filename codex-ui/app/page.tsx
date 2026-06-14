@@ -23,7 +23,10 @@ import {
   Copy,
   Check,
   RefreshCw,
+  LogOut,
 } from "lucide-react";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 type Message = {
   role: "user" | "assistant";
@@ -48,82 +51,40 @@ interface QuickPrompt {
 
 const ALL_QUICK_PROMPTS: QuickPrompt[] = [
   {
-    title: "DBeaver SSL Path",
-    desc: "SSL certificate configuration path for MySQL.",
-    text: "What is the exact UI path to manage SSL certificates for a MySQL driver?",
-    docKeywords: ["dbeaver"]
+    title: "Capabilities Overview",
+    desc: "Ask how to upload documents and query them in CodexEngine.",
+    text: "Can you give me an overview of CodexEngine's features and how to upload custom PDFs?",
+    docKeywords: ["help", "info", "system", "readme", "upload", "pdf"]
   },
   {
-    title: "DBeaver Secrets",
-    desc: "Learn something unique or surprising about DBeaver!",
-    text: "Tell me something surprising about DBeaver!",
-    docKeywords: ["dbeaver"]
+    title: "Write a Python Script",
+    desc: "Generate programming code blocks instantly.",
+    text: "Write a clean Python function to check if a number is prime and explain its complexity.",
+    docKeywords: ["python", "code", "prime", "script"]
   },
   {
-    title: "Agentic RAG Survey",
-    desc: "How does the RAG pipeline evaluate intent and groundedness?",
-    text: "How does the RAG pipeline evaluate intent and groundedness?",
-    docKeywords: ["agentic", "rag"]
+    title: "Draft SQL Queries",
+    desc: "Formulate database query structures.",
+    text: "Draft a PostgreSQL query to calculate average order value by month from an orders table.",
+    docKeywords: ["sql", "database", "postgres", "query"]
   },
   {
-    title: "Surface Code Logic",
-    desc: "Logical error rate scaling vs distance in codes.",
-    text: "Explain the relationship between 'distance' and 'logical error rate' in surface codes.",
-    docKeywords: ["surface", "quantum"]
+    title: "Format Markdown Tables",
+    desc: "Format unstructured text inputs into Markdown.",
+    text: "Convert this list of users into a clean Markdown table with columns Name, Email, and Role:\n- John Doe, john@example.com, Admin\n- Jane Smith, jane@example.com, Editor",
+    docKeywords: ["format", "table", "markdown", "csv"]
   },
   {
-    title: "Decolonial Axiology",
-    desc: "The author's framework definition of coloniality.",
-    text: "How does the author define the 'Axiological' framework of coloniality?",
-    docKeywords: ["sai deepak", "bharat"]
+    title: "Explain RAG Pipelines",
+    desc: "Ask the assistant to explain RAG concepts generally.",
+    text: "What is Retrieval-Augmented Generation (RAG) and what are its main advantages over vanilla LLMs?",
+    docKeywords: ["rag", "retrieval", "augmented", "generation"]
   },
   {
-    title: "Sanderson's Metal",
-    desc: "Kelsier's plan for the Eleventh Metal against the Lord Ruler.",
-    text: "What was Kelsier's specific plan for utilizing the Eleventh Metal against the Lord Ruler?",
-    docKeywords: ["final empire", "sanderson"]
-  },
-  {
-    title: "MLLM Adversarial",
-    desc: "Methods used to compromise multimodal LLMs.",
-    text: "What are the primary methods discussed for executing adversarial attacks on Multimodal Large Language Models?",
-    docKeywords: ["adversarial", "multimodal"]
-  },
-  {
-    title: "Econ Nowcasting",
-    desc: "Advantages of nowcasting vs traditional indicators.",
-    text: "How does Anthropic's report explain the advantages of nowcasting over traditional economic indicators?",
-    docKeywords: ["anthropic", "nowcasting", "econ"]
-  },
-  {
-    title: "Lifelong RL Memory",
-    desc: "Using generative memory to solve catastrophic forgetting.",
-    text: "Explain how generative memory is utilized in lifelong reinforcement learning to mitigate catastrophic forgetting.",
-    docKeywords: ["lifelong", "reinforcement", "memory"]
-  },
-  {
-    title: "CV Code Generation",
-    desc: "Deep learning approach for source code generation in CV.",
-    text: "What deep learning architectures are proposed for generating source code for computer vision systems?",
-    docKeywords: ["source code", "computer vision", "learning-based"]
-  },
-  {
-    title: "Latin America History",
-    desc: "Historical resources exploited in Latin America.",
-    text: "According to Eduardo Galeano, what were the primary historical resources exploited in Latin America and their impact?",
-    docKeywords: ["open veins", "galeano", "latin america"]
-  },
-  {
-    title: "Open Addressing Bounds",
-    desc: "Bounds on lookup time and probe sequences.",
-    text: "What are the optimal bounds for open addressing hash tables without key reordering?",
-    docKeywords: ["open addressing", "reordering"]
-  },
-  {
-    title: "Russia's Geography",
-    desc: "How barriers and plains shape geopolitics.",
-    text: "How do the geographic barriers of Russia, such as the North European Plain, shape its geopolitical strategy according to Tim Marshall?",
-    docKeywords: ["geography", "maps", "tim marshall"]
+    title: "Creative Writing Help",
+    desc: "Draft copy or clean up communications.",
+    text: "Help me draft a short, professional email summarizing a project launch for a team newsletter.",
+    docKeywords: ["email", "draft", "write", "creative"]
   }
 ];
 
@@ -133,11 +94,102 @@ export default function Home() {
   const [status, setStatus] = useState("System Standby");
   const [isStreaming, setIsStreaming] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [threadId, setThreadId] = useState(() => crypto.randomUUID());
+  const [isMounted, setIsMounted] = useState(false);
+  const [threadId, setThreadId] = useState("");
+
+  // Auth state
+  const [token, setToken] = useState<string | null>(null);
+  const [username, setUsername] = useState<string | null>(null);
+
+  useEffect(() => {
+    setThreadId(crypto.randomUUID());
+    setToken(localStorage.getItem("codex_auth_token"));
+    setUsername(localStorage.getItem("codex_auth_user"));
+    setIsMounted(true);
+  }, []);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authUsername, setAuthUsername] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+
+  const logout = () => {
+    setToken(null);
+    setUsername(null);
+    setThreads([]);
+    setMessages([]);
+    localStorage.removeItem("codex_auth_token");
+    localStorage.removeItem("codex_auth_user");
+    localStorage.removeItem("codex_threads");
+  };
+
+  const authFetch = async (url: string, options: RequestInit = {}) => {
+    const headers = new Headers(options.headers || {});
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401) {
+      logout();
+      setAuthError("Session expired. Please log in again.");
+      return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
+    }
+    return response;
+  };
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    if (!authUsername.trim() || !authPassword.trim()) {
+      setAuthError("Username and password are required.");
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      const endpoint = authMode === "login" ? "login" : "register";
+      const res = await fetch(`${API_BASE}/${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: authUsername.trim(), password: authPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || `${authMode === "login" ? "Login" : "Registration"} failed`);
+      }
+
+      if (authMode === "login") {
+        setToken(data.access_token);
+        setUsername(data.username);
+        localStorage.setItem("codex_auth_token", data.access_token);
+        localStorage.setItem("codex_auth_user", data.username);
+        setAuthUsername("");
+        setAuthPassword("");
+      } else {
+        setAuthMode("login");
+        setAuthError("Registered successfully! Please log in.");
+      }
+    } catch (err: any) {
+      setAuthError(err.message || "An error occurred during authentication.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
 
   // Custom Thread type supporting pinning
   type Thread = { id: string; title: string; timestamp: number; pinned?: boolean };
   const [threads, setThreads] = useState<Thread[]>([]);
+
+  const fetchThreads = async () => {
+    try {
+      const res = await authFetch(`${API_BASE}/threads`);
+      if (res.ok) {
+        const data = await res.json();
+        setThreads(data.threads || []);
+      }
+    } catch (e) {
+      console.error("Failed to fetch threads:", e);
+    }
+  };
 
   // Thread Rename and Pinned state
   const [editingThreadId, setEditingThreadId] = useState<string | null>(null);
@@ -166,29 +218,37 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const saved = localStorage.getItem("codex_threads");
-    if (saved) {
-      try {
-        setThreads(JSON.parse(saved));
-      } catch (e) {
-        console.error("Error parsing threads", e);
-      }
+    if (token) {
+      fetchThreads();
+    } else {
+      setThreads([]);
     }
-  }, []);
+  }, [token]);
 
   const saveThreads = (newThreads: Thread[]) => {
     setThreads(newThreads);
     localStorage.setItem("codex_threads", JSON.stringify(newThreads));
   };
 
-  const togglePin = (id: string) => {
-    const updated = threads.map((t) => {
-      if (t.id === id) {
-        return { ...t, pinned: !t.pinned };
-      }
-      return t;
-    });
+  const togglePin = async (id: string) => {
+    const thread = threads.find((t) => t.id === id);
+    if (!thread) return;
+    const updatedThread = { ...thread, pinned: !thread.pinned };
+
+    const updated = threads.map((t) => (t.id === id ? updatedThread : t));
     saveThreads(updated);
+
+    if (token) {
+      try {
+        await authFetch(`${API_BASE}/threads`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updatedThread),
+        });
+      } catch (e) {
+        console.error("Failed to sync pin state", e);
+      }
+    }
   };
 
   const startRename = (id: string, title: string) => {
@@ -196,21 +256,32 @@ export default function Home() {
     setEditTitle(title);
   };
 
-  const saveRename = (id: string) => {
+  const saveRename = async (id: string) => {
     if (!editTitle.trim()) return;
-    const updated = threads.map((t) => {
-      if (t.id === id) {
-        return { ...t, title: editTitle.trim() };
-      }
-      return t;
-    });
+    const thread = threads.find((t) => t.id === id);
+    if (!thread) return;
+    const updatedThread = { ...thread, title: editTitle.trim() };
+
+    const updated = threads.map((t) => (t.id === id ? updatedThread : t));
     saveThreads(updated);
     setEditingThreadId(null);
+
+    if (token) {
+      try {
+        await authFetch(`${API_BASE}/threads`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updatedThread),
+        });
+      } catch (e) {
+        console.error("Failed to sync rename", e);
+      }
+    }
   };
 
   const deleteThread = async (id: string) => {
     if (!confirm("Are you sure you want to delete this chat and all its temporal documents?")) return;
-    
+
     // Remove from frontend list
     const updated = threads.filter((t) => t.id !== id);
     saveThreads(updated);
@@ -225,9 +296,15 @@ export default function Home() {
 
     // Call backend to purge temporal chunks and files
     try {
-      await fetch(`http://127.0.0.1:8000/chat/${id}/temporal`, {
-        method: "DELETE",
-      });
+      if (token) {
+        await authFetch(`${API_BASE}/threads/${id}`, {
+          method: "DELETE",
+        });
+      } else {
+        await fetch(`${API_BASE}/chat/${id}/temporal`, {
+          method: "DELETE",
+        });
+      }
       fetchSessionFiles();
     } catch (err) {
       console.error("Failed to delete temporal backend files:", err);
@@ -241,7 +318,7 @@ export default function Home() {
     setStatus("Loading conversation history...");
     setMessages([]);
     try {
-      const res = await fetch(`http://127.0.0.1:8000/chat/${id}/history`);
+      const res = await authFetch(`${API_BASE}/chat/${id}/history`);
       if (res.ok) {
         const data = await res.json();
         setMessages(data.history || []);
@@ -266,7 +343,7 @@ export default function Home() {
   const fetchDocuments = async () => {
     setLoadingDocs(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/documents");
+      const res = await authFetch(`${API_BASE}/documents`);
       if (res.ok) {
         const data = await res.json();
         setDocuments(data.documents || []);
@@ -280,7 +357,7 @@ export default function Home() {
 
   const fetchSessionFiles = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8000/documents");
+      const res = await authFetch(`${API_BASE}/documents`);
       if (res.ok) {
         const data = await res.json();
         const filtered = (data.documents || []).filter((doc: any) => doc.thread_id === threadId);
@@ -329,7 +406,7 @@ export default function Home() {
     formData.append("file", file);
 
     try {
-      const response = await fetch(`http://127.0.0.1:8000/upload/temporal?thread_id=${threadId}`, {
+      const response = await authFetch(`${API_BASE}/upload/temporal?thread_id=${threadId}`, {
         method: "POST",
         body: formData,
       });
@@ -352,7 +429,7 @@ export default function Home() {
 
   const handleRemoveTemporalFile = async (filename: string) => {
     try {
-      const res = await fetch(`http://127.0.0.1:8000/documents/${encodeURIComponent(filename)}?thread_id=${threadId}`, {
+      const res = await authFetch(`${API_BASE}/documents/${encodeURIComponent(filename)}?thread_id=${threadId}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -369,11 +446,11 @@ export default function Home() {
   const handleDeleteDocument = async (filename: string, docThreadId?: string) => {
     if (!confirm(`Are you sure you want to delete ${filename} and all its chunks from the vector database?`)) return;
     try {
-      const url = new URL(`http://127.0.0.1:8000/documents/${encodeURIComponent(filename)}`);
+      const url = new URL(`${API_BASE}/documents/${encodeURIComponent(filename)}`);
       if (docThreadId) {
         url.searchParams.append("thread_id", docThreadId);
       }
-      const res = await fetch(url.toString(), {
+      const res = await authFetch(url.toString(), {
         method: "DELETE",
       });
       if (res.ok) {
@@ -392,11 +469,11 @@ export default function Home() {
   const handleReingestDocument = async (filename: string, docThreadId?: string) => {
     setUploadStatus(`Re-ingesting: ${filename}...`);
     try {
-      const url = new URL(`http://127.0.0.1:8000/documents/${encodeURIComponent(filename)}/reingest`);
+      const url = new URL(`${API_BASE}/documents/${encodeURIComponent(filename)}/reingest`);
       if (docThreadId) {
         url.searchParams.append("thread_id", docThreadId);
       }
-      const res = await fetch(url.toString(), {
+      const res = await authFetch(url.toString(), {
         method: "POST",
       });
       if (res.ok) {
@@ -432,7 +509,11 @@ export default function Home() {
 
     for (const id of idsToDelete) {
       try {
-        fetch(`http://127.0.0.1:8000/chat/${id}/temporal`, { method: "DELETE" });
+        if (token) {
+          await authFetch(`${API_BASE}/threads/${id}`, { method: "DELETE" });
+        } else {
+          await fetch(`${API_BASE}/chat/${id}/temporal`, { method: "DELETE" });
+        }
       } catch (err) {
         console.error(`Failed to delete temporal backend files for thread ${id}:`, err);
       }
@@ -521,7 +602,7 @@ export default function Home() {
     formData.append("file", file);
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/upload", {
+      const response = await authFetch(`${API_BASE}/upload`, {
         method: "POST",
         body: formData, // Do NOT set Content-Type header; the browser sets the multipart boundary automatically
       });
@@ -561,13 +642,21 @@ export default function Home() {
       const title = userMessage.length > 28 ? userMessage.slice(0, 25) + "..." : userMessage;
       const newThread = { id: threadId, title, timestamp: Date.now() };
       saveThreads([newThread, ...threads]);
+
+      if (token) {
+        authFetch(`${API_BASE}/threads`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(newThread),
+        }).catch((e) => console.error("Failed to sync new thread", e));
+      }
     }
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/chat/stream", {
+      const response = await authFetch(`${API_BASE}/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userMessage, thread_id: threadId }),
@@ -799,6 +888,189 @@ export default function Home() {
       </div>
     );
   };
+
+  if (!isMounted) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center bg-[#0B0C10] text-[#C5C6C7] font-sans overflow-hidden select-none">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+          <span className="text-xs font-medium tracking-wider uppercase text-gray-500">Initializing CodexEngine...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!token) {
+    return (
+      <div className="relative flex min-h-screen items-center justify-center bg-[#0B0C10] text-[#C5C6C7] font-sans overflow-y-auto select-none selection:bg-blue-500/30 p-4 lg:p-8">
+        {/* GLOBAL BACKGROUND EFFECTS */}
+        <div className="absolute inset-0 z-0 bg-[size:40px_40px] bg-[linear-gradient(to_right,rgba(255,255,255,0.015)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.015)_1px,transparent_1px)] pointer-events-none" />
+        <div
+          className="absolute top-0 left-0 w-full h-full z-0 pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(circle at 10% 30%, rgba(76, 29, 149, 0.15), transparent 40%), radial-gradient(circle at 90% 70%, rgba(37, 99, 235, 0.15), transparent 40%)",
+          }}
+        />
+
+        <div className="relative z-10 w-full max-w-5xl bg-white/[0.01] backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-0">
+          
+          {/* LEFT SIDE: PRODUCT ARCHITECTURE & SPECS */}
+          <div className="lg:col-span-7 p-8 lg:p-12 border-b lg:border-b-0 lg:border-r border-white/10 flex flex-col justify-between space-y-8 bg-gradient-to-br from-white/[0.02] to-transparent">
+            <div className="space-y-6">
+              {/* Badge */}
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-semibold uppercase tracking-wider">
+                <Sparkles size={12} className="animate-pulse" />
+                Stateful Cognitive Engine v4.0
+              </div>
+
+              {/* Title */}
+              <div>
+                <h1 className="text-4xl lg:text-5xl font-extrabold bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent tracking-tight">
+                  CodexEngine
+                </h1>
+                <p className="text-sm font-medium text-blue-400 mt-1 uppercase tracking-widest">
+                  Cognitive Knowledge Operating System
+                </p>
+              </div>
+
+              {/* Tagline */}
+              <p className="text-sm text-gray-400 leading-relaxed max-w-xl">
+                An enterprise-grade, stateful cognitive retrieval and multi-agent orchestration system. CodexEngine moves beyond linear RAG pipelines using a dynamic **Actor-Critic state machine** to securely ingest, isolate, and index knowledge bases.
+              </p>
+
+              {/* Technical Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4">
+                <div className="space-y-1.5 p-4 rounded-xl bg-white/[0.01] border border-white/5 hover:border-white/10 transition-all duration-300 group">
+                  <div className="flex items-center gap-2 text-white font-semibold text-sm">
+                    <MessageSquare size={16} className="text-purple-400 group-hover:scale-110 transition-transform" />
+                    <span>LangGraph State Machine</span>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Uses an intent router traffic cop and dynamic actor-critic loop to evaluate context sufficiency and rewrite queries on the fly.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5 p-4 rounded-xl bg-white/[0.01] border border-white/5 hover:border-white/10 transition-all duration-300 group">
+                  <div className="flex items-center gap-2 text-white font-semibold text-sm">
+                    <TerminalSquare size={16} className="text-blue-400 group-hover:scale-110 transition-transform" />
+                    <span>pgvector Hybrid Search</span>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Embeds content locally using ONNX-accelerated 384-dim dense vectors, enforcing cosine similarity thresholds for high accuracy.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5 p-4 rounded-xl bg-white/[0.01] border border-white/5 hover:border-white/10 transition-all duration-300 group">
+                  <div className="flex items-center gap-2 text-white font-semibold text-sm">
+                    <Settings size={16} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+                    <span>Cognition Observability</span>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Real-time monitoring panel displaying relevance, confidence, and source groundedness metrics directly above streaming responses.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5 p-4 rounded-xl bg-white/[0.01] border border-white/5 hover:border-white/10 transition-all duration-300 group">
+                  <div className="flex items-center gap-2 text-white font-semibold text-sm">
+                    <Pin size={16} className="text-amber-400 group-hover:scale-110 transition-transform" />
+                    <span>Secure Multi-Tenant Isolation</span>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Hardened JWT-auth shielding user threads and uploaded temporal documents. Your session data remains strictly invisible to others.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Recruiter notice */}
+            <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/10 text-xs text-gray-400 leading-relaxed flex items-start gap-3">
+              <span className="text-base leading-none">💡</span>
+              <div>
+                <span className="text-white font-semibold">Recruiter Quick Access:</span> Register any custom username and password to log in. No prior invite code or setup is required. Your documents and chat history will sync to PostgreSQL in isolation.
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT SIDE: AUTHENTICATION FORM */}
+          <div className="lg:col-span-5 p-8 lg:p-12 flex flex-col justify-center bg-[#0B0C10]/40">
+            <div className="w-full max-w-sm mx-auto space-y-6">
+              <div className="text-center lg:text-left space-y-1">
+                <h2 className="text-xl font-bold text-white tracking-tight">
+                  {authMode === "login" ? "Welcome Back" : "Create Account"}
+                </h2>
+                <p className="text-xs text-gray-500">
+                  {authMode === "login" ? "Sign in to access your secure knowledge workspace" : "Register a new account to isolate your RAG sessions"}
+                </p>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex w-full border-b border-white/10 font-medium text-xs">
+                <button
+                  onClick={() => { setAuthMode("login"); setAuthError(""); }}
+                  className={`flex-1 pb-3 text-center transition-colors cursor-pointer ${authMode === "login" ? "text-blue-400 border-b-2 border-blue-400 font-semibold" : "text-gray-500 hover:text-gray-300"}`}
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={() => { setAuthMode("register"); setAuthError(""); }}
+                  className={`flex-1 pb-3 text-center transition-colors cursor-pointer ${authMode === "register" ? "text-blue-400 border-b-2 border-blue-400 font-semibold" : "text-gray-500 hover:text-gray-300"}`}
+                >
+                  Register
+                </button>
+              </div>
+
+              {/* Form */}
+              <form onSubmit={handleAuth} className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+                    Username
+                  </label>
+                  <input
+                    type="text"
+                    value={authUsername}
+                    onChange={(e) => setAuthUsername(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/5 focus:border-white/20 text-white outline-none transition-all text-xs font-medium"
+                    placeholder="e.g. recruiter_demo"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/5 focus:border-white/20 text-white outline-none transition-all text-xs font-medium"
+                    placeholder="••••••••"
+                    required
+                  />
+                </div>
+
+                {authError && (
+                  <div className={`text-[11px] p-3 rounded-lg border leading-relaxed ${authError.includes("successfully") ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>
+                    {authError}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white text-xs font-semibold transition-all shadow-lg shadow-blue-500/15 cursor-pointer active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  {authLoading ? "Verifying..." : authMode === "login" ? "Sign In" : "Register"}
+                </button>
+              </form>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex h-screen bg-[#0B0C10] text-[#C5C6C7] font-sans overflow-hidden selection:bg-blue-500/30">
@@ -1055,6 +1327,43 @@ export default function Home() {
               )}
             </button>
           </div>
+
+          {username && (
+            <div className={`mt-2 border-t border-white/5 pt-3 ${sidebarOpen ? "px-3" : "px-0"}`}>
+              {sidebarOpen ? (
+                <div className="flex items-center justify-between p-2 rounded-xl bg-white/[0.02] border border-white/5 gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs uppercase shrink-0 shadow-md shadow-blue-500/10">
+                      {username.charAt(0)}
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs font-semibold text-white truncate max-w-[100px]" title={username}>
+                        {username}
+                      </span>
+                      <span className="text-[9px] font-medium text-gray-500 uppercase tracking-wider">
+                        Workspace Owner
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={logout}
+                    className="p-2 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer shrink-0"
+                    title="Log Out"
+                  >
+                    <LogOut size={14} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={logout}
+                  className="flex items-center justify-center w-10 h-10 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors mx-auto cursor-pointer"
+                  title={`Log Out (${username})`}
+                >
+                  <LogOut size={16} />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </aside>
 
@@ -1255,7 +1564,7 @@ export default function Home() {
                                         <button
                                           type="button"
                                           onClick={() => handleCitationClick(href, msg.context || "")}
-                                          title={`Source: ${source}${page ? ` | Page: ${page}` : ""}${row ? ` | Row: ${row}` : ""}`}
+                                          title={`${source} ${page ? `p. ${page}` : row ? `r. ${row}` : "doc"}`}
                                           className="inline-flex items-center justify-center px-1 py-0.5 mx-0.5 rounded text-[9px] font-mono font-bold bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/20 transition-all cursor-pointer align-super"
                                         >
                                           [{label}]
