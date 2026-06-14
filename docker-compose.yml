@@ -16,8 +16,8 @@ services:
 
   backend:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ./codex-backend
+      dockerfile: Dockerfile
     container_name: codex-backend
     ports:
       - "8000:8000"
@@ -29,12 +29,12 @@ services:
     depends_on:
       - db
     volumes:
-      - ./backend/data:/app/data
+      - ./codex-backend/data:/app/data
     restart: unless-stopped
 
   frontend:
     build:
-      context: ./codex-ui
+      context: ./codex-frontend
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_API_URL=http://localhost:8000

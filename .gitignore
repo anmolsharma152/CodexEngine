@@ -5,7 +5,7 @@
 
 # Python
 venv/
-backend/venv/
+codex-backend/venv/
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -29,8 +29,8 @@ tmp/
 secrets/
 
 # Frontend
-codex-ui/node_modules/
-codex-ui/.next/
+codex-frontend/node_modules/
+codex-frontend/.next/
 
 # Vector stores
 chroma_db/

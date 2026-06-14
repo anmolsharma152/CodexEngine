@@ -6,7 +6,7 @@ Stateful, multi-agent RAG system with LangGraph orchestration, pgvector, and a N
 
 ```
 CodexEngine/
-├── backend/
+├── codex-backend/
 │   ├── server.py              # FastAPI app (SSE streaming, auth, CRUD)
 │   ├── src/
 │   │   ├── state.py           # TypedDict AgentState schema
@@ -31,7 +31,7 @@ CodexEngine/
 │   ├── data/raw/              # PDF knowledge base
 │   ├── Dockerfile
 │   └── requirements.txt
-├── codex-ui/                  # Next.js frontend
+├── codex-frontend/            # Next.js frontend
 ├── docker-compose.yml
 └── .github/workflows/eval.yml # CI pipeline
 ```
@@ -40,7 +40,7 @@ CodexEngine/
 
 ```bash
 # 1. Backend
-cd backend
+cd codex-backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -57,7 +57,7 @@ python scripts/ingestion.py
 uvicorn server:app --reload --host 127.0.0.1 --port 8000
 
 # 5. Frontend (separate terminal)
-cd codex-ui
+cd codex-frontend
 npm install
 npm run dev
 ```
@@ -82,7 +82,7 @@ npm run dev
 ## Testing
 
 ```bash
-cd backend
+cd codex-backend
 source venv/bin/activate
 python tests/test_golden.py       # Single query
 python tests/test_rigorous.py     # Full sweep

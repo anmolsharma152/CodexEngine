@@ -77,12 +77,12 @@ Cross-referenced against: `README.md`, `ANALYSIS.md`, `CodexEngine V3 → V4 Han
 
 | Issue | File(s) | Impact |
 |-------|---------|--------|
-| `Condenser` instantiates `ChatGroq` inside the function | `backend/src/nodes/condenser.py:23` | Every call re-instantiates the model; should be module-level like all other nodes |
-| `GROQ_MODEL_NAME` env var documented but never read | `backend/.env.example` vs all node files | Models are hardcoded; cannot swap models without editing source code |
+| `Condenser` instantiates `ChatGroq` inside the function | `codex-backend/src/nodes/condenser.py:23` | Every call re-instantiates the model; should be module-level like all other nodes |
+| `GROQ_MODEL_NAME` env var documented but never read | `codex-backend/.env.example` vs all node files | Models are hardcoded; cannot swap models without editing source code |
 | `render.yaml` has `ALLOWED_ORIGINS: "*"` | `render.yaml:15` | Security concern for production; should target the actual Vercel deployment URL |
-| DB schema seeded on every startup | `backend/server.py:64` | `create_auth_tables()` runs on every `import`, not just first boot |
-| All logging uses `print()` | All backend files | No `logging` module, no log levels, no structured output |
-| AGENTS.md warns about Next.js 16 breaking changes | `codex-ui/AGENTS.md` | UI code may break if it relies on deprecated Next.js conventions |
+| DB schema seeded on every startup | `codex-backend/server.py:64` | `create_auth_tables()` runs on every `import`, not just first boot |
+| All logging uses `print()` | All codex-backend files | No `logging` module, no log levels, no structured output |
+| AGENTS.md warns about Next.js 16 breaking changes | `codex-frontend/AGENTS.md` | UI code may break if it relies on deprecated Next.js conventions |
 
 ---
 
