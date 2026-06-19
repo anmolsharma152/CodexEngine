@@ -414,8 +414,8 @@ async def upload_document(file: UploadFile = File(...), current_user=Depends(get
 @app.get("/documents")
 async def list_documents_endpoint(current_user=Depends(get_current_user)):
     try:
-        prefix = f"{current_user.id}/"
-        storage_files = await _list_storage_files(prefix, auth_token=current_user.token)
+        user_prefix = f"{current_user.id}/"
+        storage_files = await _list_storage_files(user_prefix, auth_token=current_user.token)
 
         with engine.connect() as conn:
             sql = text("""
@@ -429,17 +429,23 @@ async def list_documents_endpoint(current_user=Depends(get_current_user)):
 
         merged = []
         for sf in storage_files:
-            fname = sf["filename"]
+            path = sf["filename"]
+            rel = path.removeprefix(user_prefix)
+            parts = rel.split("/", 1)
+            basename = parts[-1]
+            thread_id = parts[0] if len(parts) > 1 and parts[0] != parts[-1] else None
+
             merged.append({
-                "filename": fname,
+                "filename": basename,
                 "size_bytes": sf["size_bytes"],
-                "chunks_count": db_counts.get(fname, 0),
-                "status": "Ingested" if fname in db_counts else "Pending",
+                "chunks_count": db_counts.get(basename, 0),
+                "status": "Ingested" if basename in db_counts else "Pending",
+                "thread_id": thread_id,
             })
 
-        for fname, cnt in db_counts.items():
-            if not any(m["filename"] == fname for m in merged):
-                merged.append({"filename": fname, "size_bytes": 0, "chunks_count": cnt, "status": "Ingested (DB only)"})
+        for src, cnt in db_counts.items():
+            if not any(m["filename"] == src for m in merged):
+                merged.append({"filename": src, "size_bytes": 0, "chunks_count": cnt, "status": "Ingested (DB only)"})
 
         return {"documents": merged}
     except Exception as e:

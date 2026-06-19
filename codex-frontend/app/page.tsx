@@ -1173,13 +1173,13 @@ export default function Home() {
                 {loadingDocs && <span className="animate-spin">⚙️</span>}
               </div>
 
-              {documents.length === 0 ? (
+              {documents.filter(d => !d.thread_id).length === 0 ? (
                 <div className="text-center py-12 text-sm text-gray-600 font-mono">
                   {loadingDocs ? "Loading indexed documents..." : "No source files currently indexed."}
                 </div>
               ) : (
                 <div className="divide-y divide-white/5">
-                  {documents.map((doc) => (
+                  {documents.filter(d => !d.thread_id).map((doc) => (
                     <div key={doc.filename} className="flex items-center justify-between py-3 px-1 hover:bg-white/[0.02] rounded-lg transition-colors group">
                       <div className="flex items-center gap-3 min-w-0 flex-1 pr-4">
                         <div className="h-8 w-8 rounded bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 shrink-0">
