@@ -172,6 +172,7 @@ def create_graph(checkpointer):
 # Lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    storage_client.ensure_bucket(STORAGE_BUCKET)
     checkpointer_url = DB_URL.replace("postgresql+psycopg://", "postgresql://")
     async with AsyncPostgresSaver.from_conn_string(checkpointer_url) as checkpointer:
         await checkpointer.setup()

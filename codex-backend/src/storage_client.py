@@ -1,7 +1,4 @@
 import os
-import io
-import mimetypes
-from urllib.parse import urljoin
 
 import httpx
 from dotenv import load_dotenv
@@ -12,6 +9,7 @@ load_dotenv()
 
 _SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 _SUPABASE_ANON_KEY = os.environ["SUPABASE_ANON_KEY"]
+_SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 
 
 def _auth_headers(auth_token: str | None = None) -> dict:
@@ -56,7 +54,7 @@ def download_file(bucket: str, path: str, auth_token: str | None = None) -> byte
 
 
 def list_files(bucket: str, prefix: str, auth_token: str | None = None) -> list[dict]:
-    url = f"{_SUPABASE_URL}/storage/v1/object/list/{bucket}/{prefix}"
+    url = f"{_SUPABASE_URL}/storage/v1/object/list/{bucket}"
     try:
         resp = httpx.post(url, headers=_auth_headers(auth_token), json={"prefix": prefix, "limit": 100, "offset": 0}, timeout=30)
         resp.raise_for_status()
@@ -73,3 +71,35 @@ def remove_files(bucket: str, paths: list[str], auth_token: str | None = None) -
         resp.raise_for_status()
     except Exception as e:
         logger.error(f"Storage remove failed for {bucket}/{paths}: {e}")
+
+
+def ensure_bucket(bucket: str) -> None:
+    if not _SUPABASE_SERVICE_KEY:
+        logger.warning("SUPABASE_SERVICE_KEY not set; skipping bucket auto-creation")
+        return
+    url = f"{_SUPABASE_URL}/storage/v1/buckets"
+    headers = {
+        "Authorization": f"Bearer {_SUPABASE_SERVICE_KEY}",
+        "apiKey": _SUPABASE_SERVICE_KEY,
+    }
+    try:
+        resp = httpx.get(f"{url}/{bucket}", headers=headers, timeout=10)
+        if resp.status_code == 404:
+            resp = httpx.post(
+                url,
+                headers=headers,
+                json={
+                    "id": bucket,
+                    "name": bucket,
+                    "public": False,
+                    "file_size_limit": 52428800,
+                    "allowed_mime_types": ["application/pdf"],
+                },
+                timeout=10,
+            )
+            resp.raise_for_status()
+            logger.info(f"Created storage bucket: {bucket}")
+        else:
+            logger.info(f"Storage bucket already exists: {bucket}")
+    except Exception as e:
+        logger.error(f"Failed to ensure bucket {bucket} exists: {e}")

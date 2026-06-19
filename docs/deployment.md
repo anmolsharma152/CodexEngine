@@ -4,7 +4,7 @@
 
 | Service | Config File | Variables |
 |---|---|---|
-| **Render** (backend) | `render.yaml` | `DB_URL`, `GROQ_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GOOGLE_API_KEY`, `ALLOWED_ORIGINS` |
+| **Render** (backend) | `render.yaml` | `DB_URL`, `GROQ_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_KEY`, `GOOGLE_API_KEY`, `ALLOWED_ORIGINS` |
 | **Vercel** (frontend) | Project Settings → Environment Variables | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL` |
 
 ## Steps
@@ -13,8 +13,7 @@
 
 1. Create a free project at [supabase.com](https://supabase.com)
 2. **Auth**: Settings → Auth → Email → toggle **Confirm email OFF**
-3. **Storage**: Create a bucket named `documents` (lowercase, non-public)
-4. **SQL**: Run `codex-backend/supabase/seed.sql` in Supabase SQL Editor to create tables and RLS policies
+3. **SQL**: Run `codex-backend/supabase/seed.sql` in Supabase SQL Editor to create tables, storage bucket, and RLS policies
 
 ### 2. Backend (Render)
 

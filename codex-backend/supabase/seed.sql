@@ -21,6 +21,15 @@ CREATE INDEX IF NOT EXISTS idx_prose_chunks_metadata ON prose_chunks USING GIN (
 
 CREATE INDEX IF NOT EXISTS idx_threads_user_id ON threads (user_id);
 
+-- Storage: create the 'documents' bucket (idempotent, skipped if not on Supabase)
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'storage' AND table_name = 'buckets') THEN
+    INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+    VALUES ('documents', 'documents', false, 52428800, NULL)
+    ON CONFLICT (id) DO NOTHING;
+  END IF;
+END $$;
+
 -- Storage RLS policies for the 'documents' bucket (idempotent, skipped if not on Supabase)
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'storage' AND table_name = 'objects') THEN

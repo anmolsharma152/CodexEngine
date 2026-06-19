@@ -69,12 +69,32 @@ _embedding_model = None
 
 
 def _low_memory() -> bool:
+    if os.environ.get("RENDER") == "true":
+        return True
+    try:
+        path = "/sys/fs/cgroup/memory.max"
+        if os.path.exists(path):
+            with open(path) as f:
+                raw = f.read().strip()
+                if raw != "max":
+                    return int(raw) < 1.5 * 1024**3
+    except Exception:
+        pass
+    try:
+        path = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+        if os.path.exists(path):
+            with open(path) as f:
+                val = int(f.read().strip())
+                if val > 0:
+                    return val < 1.5 * 1024**3
+    except Exception:
+        pass
     try:
         with open("/proc/meminfo") as f:
             for line in f:
                 if line.startswith("MemTotal:"):
                     kb = int(line.split()[1])
-                    return kb < 1_500_000  # under ~1.5GB total RAM
+                    return kb < 1_500_000
     except Exception:
         pass
     return False
