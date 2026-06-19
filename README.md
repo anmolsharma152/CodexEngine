@@ -5,24 +5,66 @@ Stateful, multi-agent RAG system with LangGraph orchestration, pgvector, Supabas
 ## Architecture
 
 ```
-User
-  │
-  ├──► Frontend (Next.js 16)
-  │       │
-  │       ├──► Supabase Auth (login/register)
-  │       │
-  │       └──► Backend API (FastAPI + SSE)
-  │               │
-  │               ├──► LangGraph Pipeline
-  │               │     Router → Condenser → Retriever → Evaluator
-  │               │     → Rewriter (loop ×3) → Actor → Response
-  │               │
-  │               ├──► PostgreSQL + pgvector (RAG data)
-  │               │     (Arch native OR Docker OR Supabase Postgres)
-  │               │
-  │               └──► Supabase Storage (file uploads)
-  │
-  └──► Groq API (LLM inference)
+┌─────────────────────────────────────────────────────────┐
+│                        User                             │
+│              (Browser / Client)                         │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│              codex-frontend (Next.js 16)                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │
+│  │  Auth UI      │  │  Chat UI     │  │  Document     │  │
+│  │  (login/reg)  │  │  (SSE stream)│  │  Manager      │  │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬────────┘  │
+│         │                │                  │           │
+│  ┌──────┴────────────────┴──────────────────┴────────┐  │
+│  │           @supabase/supabase-js (SDK)              │  │
+│  │     Auth session JWT → Bearer token to backend     │  │
+│  └────────────────────────┬──────────────────────────┘  │
+└───────────────────────────┼─────────────────────────────┘
+                            │              ▲
+                     ┌──────┴─────┐        │
+                     │  Supabase  │────────┘
+                     │  Auth      │  (sign up / sign in)
+                     └────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────┐
+│              codex-backend (FastAPI + Uvicorn)            │
+│                                                          │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │  1. Router  ──►  2. Condenser  ──►  3. Retriever  │  │
+│  │      │                │                │           │  │
+│  │     ┌──────────────────────────────────┘           │  │
+│  │     ▼                                              │  │
+│  │  4. Evaluator  ◄──  (loop up to 3x)  ◄── 5. Rewriter│  │
+│  │      │                                              │  │
+│  │     ▼                                              │  │
+│  │  6. Actor  ──►  Response (SSE stream)              │  │
+│  └────────────────────────────────────────────────────┘  │
+│                                                          │
+│  Hybrid Retrieval:                                       │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │  Query ──► Gemini Embedding API ──► Vector Search  │  │
+│  │         ──► BM25 (keyword)       ──► Fusion        │  │
+│  │         ──► DuckDuckGo (web fallback)              │  │
+│  └────────────────────────────────────────────────────┘  │
+└──────────┬────────────────────────────────────┬──────────┘
+           │                                    │
+           ▼                                    ▼
+┌──────────────────────┐          ┌──────────────────────────┐
+│  PostgreSQL + pgvector│          │  Supabase Storage        │
+│  (threads, prose_chunks)         │  (documents bucket)      │
+│  Arch / Docker / Supabase│       │  (user-isolated folders) │
+└──────────────────────┘          └──────────────────────────┘
+
+External APIs:
+  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐
+  │  Groq        │  │  Google      │  │  HuggingFace     │
+  │  (LLM)       │  │  Gemini      │  │  (future model)  │
+  │  llama-3.1   │  │  (embeddings)│  │                  │
+  └──────────────┘  └──────────────┘  └──────────────────┘
 ```
 
 ### Embedding Model
