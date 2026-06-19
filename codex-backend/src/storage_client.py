@@ -77,7 +77,7 @@ async def ensure_bucket(bucket: str) -> None:
     if not _SUPABASE_SERVICE_KEY:
         logger.warning("SUPABASE_SERVICE_KEY not set; skipping bucket auto-creation")
         return
-    url = f"{_SUPABASE_URL}/storage/v1/buckets"
+    url = f"{_SUPABASE_URL}/storage/v1/bucket"
     headers = {
         "Authorization": f"Bearer {_SUPABASE_SERVICE_KEY}",
         "apiKey": _SUPABASE_SERVICE_KEY,
