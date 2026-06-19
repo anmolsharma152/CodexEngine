@@ -1,28 +1,28 @@
 import os
 import re
+import time
 
-import httpx
+import google.generativeai as genai
 from dotenv import load_dotenv
+
+from src.log_utils import logger
 
 load_dotenv()
 
-HF_EMBED_URL = os.getenv(
-    "HF_EMBED_URL",
-    "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2",
-)
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 
-class APIEmbeddingWrapper:
+class GeminiEmbeddingWrapper:
     def __init__(self):
-        self._client = httpx.Client(timeout=30)
+        self._model = "models/embedding-001"
 
     def _embed(self, texts: list[str]) -> list[list[float]]:
-        resp = self._client.post(HF_EMBED_URL, json={"inputs": texts})
-        resp.raise_for_status()
-        data = resp.json()
-        if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
-            return data
-        return [data]
+        try:
+            result = genai.embed_content(model=self._model, content=texts, output_dimensionality=384)
+            return result["embedding"]
+        except Exception as e:
+            logger.error(f"Gemini embedding failed: {e}")
+            raise
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         return self._embed(texts)

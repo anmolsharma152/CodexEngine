@@ -25,6 +25,14 @@ User
   └──► Groq API (LLM inference)
 ```
 
+### Embedding Model
+
+Embeddings are produced via the **Google Gemini API** using `models/embedding-001` (384-dimensional output via `output_dimensionality`). This avoids running a heavy ONNX model locally, keeping the container small enough for Render's free tier (512MB RAM).
+
+- **API key**: Get a free key at https://aistudio.google.com/app/apikey
+- **Environment variable**: `GOOGLE_API_KEY`
+- **On failure**: the retriever degrades to BM25-only search, so the system stays functional even if the embedding API is unreachable.
+
 ### Directory Structure
 
 ```
@@ -37,7 +45,7 @@ CodexEngine/
 │   │   ├── llm.py             # Centralized LLM init
 │   │   ├── supabase_client.py # Supabase client singleton
 │   │   ├── repositories/
-│   │   │   └── utils.py       # FastEmbed + BM25 + reranker
+│   │   │   └── utils.py       # Embedding (HuggingFace API) + BM25
 │   │   └── nodes/
 │   │       ├── router.py      # Intent classifier (3-lane)
 │   │       ├── retriever.py   # Hybrid: vector + BM25 + web fallback
@@ -145,7 +153,7 @@ python eval/ragas_eval.py         # RAGAS metrics
 
 | Service | Config | Env Vars |
 |---------|--------|----------|
-| Render (backend) | `render.yaml` | `DB_URL`, `GROQ_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `ALLOWED_ORIGINS` |
+| Render (backend) | `render.yaml` | `DB_URL`, `GROQ_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GOOGLE_API_KEY`, `ALLOWED_ORIGINS` |
 | Vercel (frontend) | `vercel.json` | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL` |
 
 ## API Endpoints

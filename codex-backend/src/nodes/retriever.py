@@ -128,13 +128,18 @@ def _format_chunks(docs: list[dict]) -> str:
 
 async def retrieve_hybrid_context(state: AgentState, config=None):
     current_search = state["search_query"]
-    query_emb = ef.embed_query(current_search)
 
     thread_id = config.get("configurable", {}).get("thread_id", None) if config else None
     user_id = config.get("configurable", {}).get("user_id", None) if config else None
     user_id_str = str(user_id) if user_id is not None else ""
 
-    vector_docs = await asyncio.to_thread(_vector_search, query_emb, thread_id, user_id_str)
+    try:
+        query_emb = ef.embed_query(current_search)
+        vector_docs = await asyncio.to_thread(_vector_search, query_emb, thread_id, user_id_str)
+    except Exception as e:
+        logger.warning(f"Vector embedding failed, falling back to BM25-only: {e}")
+        vector_docs = []
+
     bm25_docs = await asyncio.to_thread(_bm25_search, current_search)
 
     all_candidates = _deduplicate(vector_docs + bm25_docs)
