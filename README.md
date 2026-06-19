@@ -4,67 +4,66 @@ Stateful, multi-agent RAG system with LangGraph orchestration, pgvector, Supabas
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                        User                             │
-│              (Browser / Client)                         │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│              codex-frontend (Next.js 16)                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐  │
-│  │  Auth UI      │  │  Chat UI     │  │  Document     │  │
-│  │  (login/reg)  │  │  (SSE stream)│  │  Manager      │  │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬────────┘  │
-│         │                │                  │           │
-│  ┌──────┴────────────────┴──────────────────┴────────┐  │
-│  │           @supabase/supabase-js (SDK)              │  │
-│  │     Auth session JWT → Bearer token to backend     │  │
-│  └────────────────────────┬──────────────────────────┘  │
-└───────────────────────────┼─────────────────────────────┘
-                            │              ▲
-                     ┌──────┴─────┐        │
-                     │  Supabase  │────────┘
-                     │  Auth      │  (sign up / sign in)
-                     └────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────┐
-│              codex-backend (FastAPI + Uvicorn)            │
-│                                                          │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  1. Router  ──►  2. Condenser  ──►  3. Retriever  │  │
-│  │      │                │                │           │  │
-│  │     ┌──────────────────────────────────┘           │  │
-│  │     ▼                                              │  │
-│  │  4. Evaluator  ◄──  (loop up to 3x)  ◄── 5. Rewriter│  │
-│  │      │                                              │  │
-│  │     ▼                                              │  │
-│  │  6. Actor  ──►  Response (SSE stream)              │  │
-│  └────────────────────────────────────────────────────┘  │
-│                                                          │
-│  Hybrid Retrieval:                                       │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │  Query ──► Gemini Embedding API ──► Vector Search  │  │
-│  │         ──► BM25 (keyword)       ──► Fusion        │  │
-│  │         ──► DuckDuckGo (web fallback)              │  │
-│  └────────────────────────────────────────────────────┘  │
-└──────────┬────────────────────────────────────┬──────────┘
-           │                                    │
-           ▼                                    ▼
-┌──────────────────────┐          ┌──────────────────────────┐
-│  PostgreSQL + pgvector│          │  Supabase Storage        │
-│  (threads, prose_chunks)         │  (documents bucket)      │
-│  Arch / Docker / Supabase│       │  (user-isolated folders) │
-└──────────────────────┘          └──────────────────────────┘
+```mermaid
+flowchart TD
+    User([User / Browser])
 
-External APIs:
-  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐
-  │  Groq        │  │  Google      │  │  HuggingFace     │
-  │  (LLM)       │  │  Gemini      │  │  (future model)  │
-  │  llama-3.1   │  │  (embeddings)│  │                  │
-  └──────────────┘  └──────────────┘  └──────────────────┘
+    subgraph Frontend [codex-frontend — Next.js 16]
+        AuthUI[Auth UI]
+        ChatUI[Chat UI / SSE]
+        DocMgr[Document Manager]
+        SupaSDK["@supabase/supabase-js<br>Auth JWT → Bearer"]
+    end
+
+    subgraph Supabase [Supabase]
+        SA[Auth<br>sign up / sign in]
+        SB[Storage<br>documents bucket]
+    end
+
+    subgraph Backend [codex-backend — FastAPI + Uvicorn]
+        direction LR
+        R[1. Router] --> C[2. Condenser] --> Ret[3. Retriever]
+        Ret --> E[4. Evaluator]
+        E -->|loop ≤3x| RW[5. Rewriter]
+        RW --> Ret
+        E --> A[6. Actor]
+        A --> Resp[SSE Response]
+
+        subgraph Retrieval [Hybrid Retrieval]
+            VEC[Vector Search<br>Gemini Embedding]
+            BM[BM25 Keyword]
+            WEB[DuckDuckGo<br>Web Fallback]
+            Fuse[Fusion + Rerank]
+        end
+    end
+
+    subgraph DB [PostgreSQL + pgvector]
+        Threads[threads]
+        Chunks[prose_chunks<br>384-dim vectors]
+    end
+
+    subgraph External [External APIs]
+        Groq[Groq<br>LLM — llama-3.1]
+        Gemini[Google Gemini<br>embeddings — free tier]
+    end
+
+    User --> Frontend
+    AuthUI --> SA
+    SA -.->|JWT session| SupaSDK
+    SupaSDK --> Backend
+    ChatUI <-->|SSE stream| Backend
+    DocMgr <-->|upload / list / delete| Backend
+
+    Backend --> SB
+    Backend --> DB
+    Ret --> VEC
+    Ret --> BM
+    Ret --> WEB
+    VEC & BM & WEB --> Fuse
+    Fuse --> Ret
+
+    VEC ---> Gemini
+    Backend ---> Groq
 ```
 
 ### Embedding Model
