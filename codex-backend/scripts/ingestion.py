@@ -38,9 +38,9 @@ def ingest_file(file_path: str, thread_id: str = None, user_id: str = None):
             doc = fitz.open(file_path)
             for page_num in range(len(doc)):
                 page = doc.load_page(page_num)
-                text = clean_text(page.get_text())
-                if text.strip():
-                    page_chunks = text_splitter.split_text(text)
+                page_text = clean_text(page.get_text())
+                if page_text.strip():
+                    page_chunks = text_splitter.split_text(page_text)
                     for chunk_text in page_chunks:
                         chunks_data.append({
                             "content": chunk_text,

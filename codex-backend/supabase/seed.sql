@@ -20,3 +20,16 @@ CREATE TABLE IF NOT EXISTS prose_chunks (
 CREATE INDEX IF NOT EXISTS idx_prose_chunks_metadata ON prose_chunks USING GIN (metadata);
 
 CREATE INDEX IF NOT EXISTS idx_threads_user_id ON threads (user_id);
+
+-- Storage RLS policies for the 'documents' bucket
+CREATE POLICY "Users can upload files" ON storage.objects
+  FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'documents' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+CREATE POLICY "Users can view their files" ON storage.objects
+  FOR SELECT TO authenticated
+  USING (bucket_id = 'documents' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+CREATE POLICY "Users can delete their files" ON storage.objects
+  FOR DELETE TO authenticated
+  USING (bucket_id = 'documents' AND auth.uid()::text = (storage.foldername(name))[1]);

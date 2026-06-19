@@ -370,13 +370,15 @@ async def upload_document(file: UploadFile = File(...), current_user=Depends(get
     try:
         raw = await file.read()
         storage_path = _storage_path(current_user.id, file.filename)
-        supabase.storage.from_(STORAGE_BUCKET).upload(storage_path, raw, {"content-type": file.content_type or "application/octet-stream"})
+        supabase.storage.from_(STORAGE_BUCKET).upload(storage_path, raw, {"content-type": file.content_type or "application/octet-stream", "upsert": "true"})
 
         tmp_path = _download_from_storage(storage_path)
         if not tmp_path:
             return JSONResponse(status_code=500, content={"message": "Failed to retrieve uploaded file for ingestion"})
-        await asyncio.to_thread(ingest_file, tmp_path, None, current_user.id)
-        os.unlink(tmp_path)
+        renamed = os.path.join(os.path.dirname(tmp_path), file.filename)
+        os.rename(tmp_path, renamed)
+        await asyncio.to_thread(ingest_file, renamed, None, current_user.id)
+        os.unlink(renamed)
 
         logger.info(f"Uploaded and ingested: {file.filename}")
         return JSONResponse(status_code=200, content={"message": f"Successfully uploaded and ingested {file.filename}"})
@@ -458,6 +460,8 @@ async def reingest_document(filename: str, thread_id: str = None, current_user=D
         tmp_path = _download_from_storage(storage_path)
         if not tmp_path:
             return JSONResponse(status_code=404, content={"message": "Source file not found in storage."})
+        renamed = os.path.join(os.path.dirname(tmp_path), filename)
+        os.rename(tmp_path, renamed)
 
         with engine.connect() as conn:
             if thread_id:
@@ -467,8 +471,8 @@ async def reingest_document(filename: str, thread_id: str = None, current_user=D
             conn.commit()
             rowcount = res.rowcount
 
-        await asyncio.to_thread(ingest_file, tmp_path, thread_id, current_user.id)
-        os.unlink(tmp_path)
+        await asyncio.to_thread(ingest_file, renamed, thread_id, current_user.id)
+        os.unlink(renamed)
 
         return {"message": f"Successfully re-ingested {filename}", "db_chunks_cleared": rowcount}
     except Exception as e:
@@ -482,13 +486,15 @@ async def upload_temporal_document(thread_id: str, file: UploadFile = File(...),
         verify_thread_ownership(thread_id, current_user.id)
         raw = await file.read()
         storage_path = _storage_path(current_user.id, file.filename, thread_id)
-        supabase.storage.from_(STORAGE_BUCKET).upload(storage_path, raw, {"content-type": file.content_type or "application/octet-stream"})
+        supabase.storage.from_(STORAGE_BUCKET).upload(storage_path, raw, {"content-type": file.content_type or "application/octet-stream", "upsert": "true"})
 
         tmp_path = _download_from_storage(storage_path)
         if not tmp_path:
             return JSONResponse(status_code=500, content={"message": "Failed to retrieve uploaded file for ingestion"})
-        await asyncio.to_thread(ingest_file, tmp_path, thread_id, current_user.id)
-        os.unlink(tmp_path)
+        renamed = os.path.join(os.path.dirname(tmp_path), file.filename)
+        os.rename(tmp_path, renamed)
+        await asyncio.to_thread(ingest_file, renamed, thread_id, current_user.id)
+        os.unlink(renamed)
 
         logger.info(f"Temporal upload: {file.filename} for thread: {thread_id}")
         return JSONResponse(status_code=200, content={"message": f"Successfully uploaded and ingested {file.filename} temporally"})
