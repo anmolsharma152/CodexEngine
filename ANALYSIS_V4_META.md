@@ -43,7 +43,7 @@ Cross-referenced against: `README.md`, `server.py`, `src/`, `Project Overview Co
 | CI pipeline | `.github/workflows/eval.yml` | Runs golden + rigorous + RAGAS on push to main |
 | Supabase auth + storage | `server.py` | JWT via `supabase.auth.get_user()`, files via `supabase.storage` |
 | Database schema | `server.py:ensure_schema()` + `supabase/seed.sql` | Auto-creates vector ext, threads table, prose_chunks table |
-| Embedding model | `src/repositories/utils.py` | Google Gemini `models/embedding-001` via API (384d, free tier). Replaced local ONNX (`fastembed`) to fit Render 512MB. Falls back to BM25-only if API unreachable. |
+| Embedding model | `src/repositories/utils.py` | Google Gemini `models/gemini-embedding-001` via API (384d via `output_dimensionality`). Replaced local ONNX (`fastembed`) to fit Render 512MB. Falls back to BM25-only if API unreachable. |
 
 ---
 

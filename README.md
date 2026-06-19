@@ -27,7 +27,7 @@ User
 
 ### Embedding Model
 
-Embeddings are produced via the **Google Gemini API** using `models/embedding-001` (384-dimensional output via `output_dimensionality`). This avoids running a heavy ONNX model locally, keeping the container small enough for Render's free tier (512MB RAM).
+Embeddings are produced via the **Google Gemini API** using `models/gemini-embedding-001` (384-dimensional output via `output_dimensionality`). This avoids running a heavy ONNX model locally, keeping the container small enough for Render's free tier (512MB RAM).
 
 - **API key**: Get a free key at https://aistudio.google.com/app/apikey
 - **Environment variable**: `GOOGLE_API_KEY`

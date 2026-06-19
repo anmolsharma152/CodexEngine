@@ -2,24 +2,26 @@ import os
 import re
 import time
 
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 
 from src.log_utils import logger
 
 load_dotenv()
 
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
 
 
 class GeminiEmbeddingWrapper:
     def __init__(self):
-        self._model = "models/embedding-001"
+        self._model = "models/gemini-embedding-001"
 
     def _embed(self, texts: list[str]) -> list[list[float]]:
         try:
-            result = genai.embed_content(model=self._model, content=texts, output_dimensionality=384)
-            return result["embedding"]
+            result = _client.models.embed_content(
+                model=self._model, contents=texts, config={"output_dimensionality": 384}
+            )
+            return [e.values for e in result.embeddings]
         except Exception as e:
             logger.error(f"Gemini embedding failed: {e}")
             raise
@@ -37,7 +39,7 @@ _embedding_model = None
 def get_embedding_function():
     global _embedding_model
     if _embedding_model is None:
-        _embedding_model = APIEmbeddingWrapper()
+        _embedding_model = GeminiEmbeddingWrapper()
     return _embedding_model
 
 
