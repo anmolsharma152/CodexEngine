@@ -45,7 +45,7 @@ CodexEngine/
 │   │   ├── llm.py             # Centralized LLM init
 │   │   ├── supabase_client.py # Supabase client singleton
 │   │   ├── repositories/
-│   │   │   └── utils.py       # Embedding (HuggingFace API) + BM25
+│   │   │   └── utils.py       # Embedding (Gemini API) + BM25
 │   │   └── nodes/
 │   │       ├── router.py      # Intent classifier (3-lane)
 │   │       ├── retriever.py   # Hybrid: vector + BM25 + web fallback
@@ -72,13 +72,14 @@ CodexEngine/
 
 ### Prerequisites
 
-- Python 3.10+ (or `uv` package manager)
+- Python 3.12+ (or `uv` package manager)
 - Node.js 20+
 - PostgreSQL with pgvector extension (one of):
   - Arch Linux: `sudo pacman -S postgresql` + AUR `pgvector`
   - Docker: `docker compose up -d db` (runs `pgvector/pgvector:pg16`)
 - A Supabase project (free tier) for auth and file storage
-- A Groq API key
+- A Groq API key (LLM inference)
+- A Google API key (embeddings — free at https://aistudio.google.com/app/apikey)
 
 ### 1. Backend Setup
 
@@ -95,7 +96,7 @@ uv venv && uv pip install -r requirements.txt
 # Configure environment
 cp .env.example .env
 # Edit .env with your keys:
-#   GROQ_API_KEY, DB_URL, SUPABASE_URL, SUPABASE_ANON_KEY
+#   GROQ_API_KEY, DB_URL, SUPABASE_URL, SUPABASE_ANON_KEY, GOOGLE_API_KEY
 ```
 
 ### 2. Database
@@ -137,7 +138,11 @@ npm run dev
 ### 5. Create Supabase Bucket
 
 In Supabase dashboard → Storage → Create bucket → name: `documents` (non-public).
-Disable email confirmation in Auth → Settings → Email Auth.
+Disable email confirmation in Auth → Providers → Email → toggle "Confirm email" OFF.
+
+### 6. Run Database Schema
+
+Run `codex-backend/supabase/seed.sql` in Supabase SQL Editor to create tables and RLS policies.
 
 ## Testing
 
@@ -155,6 +160,14 @@ python eval/ragas_eval.py         # RAGAS metrics
 |---------|--------|----------|
 | Render (backend) | `render.yaml` | `DB_URL`, `GROQ_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `GOOGLE_API_KEY`, `ALLOWED_ORIGINS` |
 | Vercel (frontend) | `vercel.json` | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL` |
+
+### Deploy Steps
+
+1. **Render**: Connect repo via Blueprint → set env vars → deploy
+2. **Vercel**: Import repo, root dir `codex-frontend`, set env vars → deploy
+3. **Supabase**: Run `codex-backend/supabase/seed.sql` in SQL Editor to create tables on the cloud DB
+4. **Storage RLS**: The seed.sql includes policies; verify bucket `documents` exists (lowercase, non-public)
+5. **After deploy**: Update `ALLOWED_ORIGINS` on Render to include `https://<your-vercel-app>.vercel.app`
 
 ## API Endpoints
 

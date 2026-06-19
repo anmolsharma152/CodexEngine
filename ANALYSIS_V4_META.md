@@ -43,6 +43,7 @@ Cross-referenced against: `README.md`, `server.py`, `src/`, `Project Overview Co
 | CI pipeline | `.github/workflows/eval.yml` | Runs golden + rigorous + RAGAS on push to main |
 | Supabase auth + storage | `server.py` | JWT via `supabase.auth.get_user()`, files via `supabase.storage` |
 | Database schema | `server.py:ensure_schema()` + `supabase/seed.sql` | Auto-creates vector ext, threads table, prose_chunks table |
+| Embedding model | `src/repositories/utils.py` | Google Gemini `models/embedding-001` via API (384d, free tier). Replaced local ONNX (`fastembed`) to fit Render 512MB. Falls back to BM25-only if API unreachable. |
 
 ---
 
@@ -50,7 +51,7 @@ Cross-referenced against: `README.md`, `server.py`, `src/`, `Project Overview Co
 
 | Item | What's Done | What's Missing |
 |------|-------------|----------------|
-| Cross-encoder re-ranking | `get_reranker()` defined in `repositories/utils.py` | Not wired into the retrieval pipeline — only vector + BM25 merged |
+| Cross-encoder re-ranking | Disabled — removed to keep container under 512MB (Render free tier) | Was never fully wired; fallback to score-based sort works fine |
 | GROQ_MODEL_NAME env var | `src/llm.py` reads it via `os.getenv()` | `actor.py:7` hardcodes `llama-3.3-70b-versatile` instead of using the env var |
 | DB schema initialization | `ensure_schema()` runs on every startup | Should only run on first boot, not on every import |
 | Frontend state management | Auth, threads, documents all work | No Zustand/React Context — calls backend directly from client component |
@@ -63,7 +64,7 @@ Cross-referenced against: `README.md`, `server.py`, `src/`, `Project Overview Co
 
 | Item | Why It Matters |
 |------|----------------|
-| RLS Policies on Supabase | Tables lack Row Level Security — any authenticated user could query other users' data |
+| RLS Policies on Supabase | Added to `supabase/seed.sql` — storage.objects policies restrict users to their own `user_id/` folder prefix |
 | Ingestion deduplication | No document hashes, no `is_document_ingested()` check, no versioning |
 | Rate limiting | No request throttling on any endpoint |
 | Async DB driver | `server.py` still uses synchronous `create_engine` for threads/docs CRUD |
@@ -76,7 +77,7 @@ Cross-referenced against: `README.md`, `server.py`, `src/`, `Project Overview Co
 | Issue | File(s) | Impact |
 |-------|---------|--------|
 | `Condenser` instantiates `ChatGroq` inside function | `src/nodes/condenser.py:23` | Re-instantiates model every call; should be module-level |
-| `render.yaml` has `ALLOWED_ORIGINS: "*"` | `render.yaml:15` | Security concern for production |
+| `ALLOWED_ORIGINS` set to Vercel URL | `render.yaml` | Updated to `https://codex-engine.vercel.app` (or set via env var) |
 | `ingestion.py` fully synchronous | `scripts/ingestion.py` | Blocks async event loop when called from upload endpoints |
 | `data/raw/` directory stale | `codex-backend/data/raw/` | 12 old PDFs remain from pre-Supabase ingestion; no longer used |
 
