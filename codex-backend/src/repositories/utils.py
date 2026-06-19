@@ -71,17 +71,22 @@ _bm25_index = None
 _bm25_corpus = []
 _bm25_metadatas: list[dict] = []
 _bm25_doc_ids: list[int] = []
+_bm25_chunk_count = 0
 
 
-def get_bm25_index():
-    global _bm25_index, _bm25_corpus, _bm25_metadatas, _bm25_doc_ids
-    if _bm25_index is not None:
-        return _bm25_index, _bm25_corpus, _bm25_metadatas, _bm25_doc_ids
+def get_bm25_index(force_refresh=False):
+    global _bm25_index, _bm25_corpus, _bm25_metadatas, _bm25_doc_ids, _bm25_chunk_count
 
     from rank_bm25 import BM25Okapi
     from sqlalchemy import create_engine, text
 
     engine = create_engine(os.getenv("DB_URL"))
+    with engine.connect() as conn:
+        current_count = conn.execute(text("SELECT COUNT(*) FROM prose_chunks")).scalar()
+
+    if _bm25_index is not None and not force_refresh and current_count == _bm25_chunk_count:
+        return _bm25_index, _bm25_corpus, _bm25_metadatas, _bm25_doc_ids
+
     with engine.connect() as conn:
         rows = conn.execute(text("SELECT content, metadata FROM prose_chunks")).fetchall()
 
@@ -94,6 +99,7 @@ def get_bm25_index():
     tokenized_corpus = [tokenize(doc) for doc in _bm25_corpus]
     _bm25_index = BM25Okapi(tokenized_corpus)
     _bm25_doc_ids = list(range(len(_bm25_corpus)))
+    _bm25_chunk_count = current_count
     return _bm25_index, _bm25_corpus, _bm25_metadatas, _bm25_doc_ids
 
 
