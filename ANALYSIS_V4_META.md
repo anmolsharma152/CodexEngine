@@ -1,8 +1,8 @@
 # CodexEngine V4.0 — Meta-Analysis & Gap Report
 
-Generated: 2026-06-14
+Generated: 2026-06-19
 
-Cross-referenced against: `README.md`, `ANALYSIS.md`, `CodexEngine V3 → V4 Handoff Document.pdf`
+Cross-referenced against: `README.md`, `server.py`, `src/`, `Project Overview CodexEngine.txt`
 
 ---
 
@@ -18,58 +18,56 @@ Cross-referenced against: `README.md`, `ANALYSIS.md`, `CodexEngine V3 → V4 Han
 
 ## 1. Completed Items
 
-| Item | Source | Notes |
-|------|--------|-------|
-| Intent Router (3-lane) | README, Handoff | Router classifies `direct_casual`, `direct_parametric`, `retrieval_required` using `llama-3.1-8b-instant` at temp 0.0 |
-| Async LLM calls | ANALYSIS.md §B | All 5 nodes use `ainvoke`; no synchronous `invoke` remains |
-| `asyncio.to_thread` for DB | ANALYSIS.md §B | Retriever wraps sync SQLAlchemy via `to_thread` |
-| `thread_id` randomization | ANALYSIS.md §C | `crypto.randomUUID()` on mount + "New Chat" |
-| SSE buffer + try-catch | ANALYSIS.md §C | `streamBuffer.split("\n\n")` + `JSON.parse` wrapped in try-catch |
-| Document Upload API | ANALYSIS.md §3A | `/upload`, `/upload/temporal`, re-ingest, delete, list endpoints |
-| `data/raw/` directory | ANALYSIS.md §D | Auto-created by `server.py` and `ingestion.py` |
-| `.env.example` | ANALYSIS.md §2B | Documents all 5 env vars |
-| `docker-compose.yml` | ANALYSIS.md §2B | pgvector + backend + frontend with correct Docker env links |
-| `Dockerfile` + `render.yaml` | ANALYSIS.md §2B | Container builds and Render deployment config |
-| Structured Evaluator | Handoff Phase 1 Task 2 | Returns JSON with `relevant`, `sufficient`, `grounded`, `confidence`, `retry_needed` |
-| Retrieval Thresholding | Handoff Phase 1 Task 1 | `SIMILARITY_THRESHOLD = 0.35` discards low-quality matches |
-| Multi-format ingestion | Handoff Phase 4 | PDF (page-aware via PyMuPDF), CSV (row-aware via DictReader), TXT/MD, fallback |
-| Compact citations | User feedback | `[p. 55]`, `[r. 3]`, `[doc]` — no verbose `[Source: ...]` |
-| Provenance Clause | User feedback | Only cites context when fact came from it; no false `[Source: Internal AI Knowledge]` tag |
-| Test suite ported | ANALYSIS.md §A | Both tests use `server.create_graph`, `user_query`/`search_query` keys, `response` output |
-| Auth (JWT + bcrypt) | — | Register, login, thread ownership verification, token expiry |
-| Multi-tenant isolation | — | `user_id` and `thread_id` scoped in metadata SQL; temporal document isolation |
-| Citation drawer in UI | README | `handleCitationClick` + sliding context drawer with source text |
-| Cognition Panel in UI | README | Shows intent, relevance, sufficiency, groundedness, confidence per response |
-| 5 golden queries + eval harness | Handoff | `eval/golden_queries.json`, baseline + V2 + V2.5 + V4 result files |
-| RAGAS evaluation | — | `eval/ragas_eval.py` computes faithfulness, answer relevancy, context precision/recall |
+| Item | Location | Notes |
+|------|----------|-------|
+| Intent Router (3-lane) | `src/nodes/router.py` | Classifies `direct_casual`, `direct_parametric`, `retrieval_required` |
+| Async LLM calls | All nodes | All 5 nodes use `ainvoke`; no synchronous `invoke` |
+| Async DB wrappers | `src/nodes/retriever.py` | Sync SQLAlchemy wrapped via `asyncio.to_thread` |
+| SSE streaming | `server.py` | Chat endpoint streams via Server-Sent Events |
+| Document Upload API | `server.py` | `/upload`, `/upload/temporal`, re-ingest, delete, list |
+| Structured Evaluator | `src/nodes/evaluator.py` | Returns JSON with `relevant`, `sufficient`, `grounded`, `confidence`, `retry_needed` |
+| Retrieval Thresholding | `src/nodes/retriever.py:14` | `SIMILARITY_THRESHOLD = 0.35` discards low-quality matches |
+| Multi-format ingestion | `scripts/ingestion.py` | PDF (PyMuPDF page-aware), CSV (row-aware), TXT/MD |
+| Compact citations | Actor prompt + UI | `[p. X]`, `[r. X]`, `[doc]`, `[web]` — no verbose tags |
+| Provenance clause | Actor prompt | Only cites context when fact came from it |
+| Auth (Supabase) | `server.py` + `src/supabase_client.py` | Register, login, JWT validation, thread ownership |
+| Multi-tenant isolation | `src/nodes/retriever.py` | `user_id` + `thread_id` scoped in metadata SQL |
+| Citation drawer | Frontend | `handleCitationClick` + sliding context panel |
+| Cognition Panel | Frontend | Shows intent, relevance, sufficiency, groundedness, confidence |
+| 5 golden queries + eval harness | `eval/golden_queries.json` | Baseline + V2 + V2.5 + V4 result files |
+| RAGAS evaluation | `eval/ragas_eval.py` | Faithfulness, answer relevancy, context precision/recall |
+| Hybrid retrieval (BM25 + vector) | `src/nodes/retriever.py` | Both searches run, merged via score |
+| Web search fallback | `src/nodes/retriever.py:92` | DuckDuckGo when local scores are low |
+| Structured logging | `src/log_utils.py` | `logger.info/error/warning` used in all nodes, server, ingestion, eval |
+| Test suite | `tests/test_golden.py`, `tests/test_rigorous.py` | CI-configured, uses local pgvector |
+| CI pipeline | `.github/workflows/eval.yml` | Runs golden + rigorous + RAGAS on push to main |
+| Supabase auth + storage | `server.py` | JWT via `supabase.auth.get_user()`, files via `supabase.storage` |
+| Database schema | `server.py:ensure_schema()` + `supabase/seed.sql` | Auto-creates vector ext, threads table, prose_chunks table |
 
 ---
 
 ## 2. Partially Complete
 
-| Item | Source | What's Done | What's Missing |
-|------|--------|-------------|----------------|
-| Async DB layer | ANALYSIS.md §B | Retriever uses `to_thread` for SQLAlchemy | `server.py` still uses synchronous `create_engine` for auth/threads/doc CRUD; `ingestion.py` is fully synchronous |
-| Routing Philosophy | Handoff Phase 1 Task 3 | 3-lane intent classifier (casual, parametric, retrieval) | No "Retrieval Necessity Estimation" (RNE) — routing is hard classification, not a nuanced confidence-based estimator |
-| Actor Relevance Logic | Handoff Phase 1 Task 4 | Evaluator runs before Actor and provides structured scores | Actor still has `is_sufficient` logic and decides what to do with context; evaluator doesn't fully own retrieval arbitration |
-| Evaluation Harness | Handoff Phase 3 Task 9 | 5 golden queries, baseline + V2 + V2.5 + V4 comparisons, RAGAS scores | No retrieval precision metrics, no hallucination detection, no latency benchmarks, no regression CI |
-| Multi-format chunkers | Handoff Phase 4 | PDF (page-aware), CSV (row-aware), TXT/MD | No SectionChunker, HeadingChunker, TableChunker, CodeChunker as described in the handoff |
-| Frontend State Mgmt | ANALYSIS.md §2B | Auth, thread list, session files, document manager all work | No Zustand/React Context; calls backend directly from client component |
+| Item | What's Done | What's Missing |
+|------|-------------|----------------|
+| Cross-encoder re-ranking | `get_reranker()` defined in `repositories/utils.py` | Not wired into the retrieval pipeline — only vector + BM25 merged |
+| GROQ_MODEL_NAME env var | `src/llm.py` reads it via `os.getenv()` | `actor.py:7` hardcodes `llama-3.3-70b-versatile` instead of using the env var |
+| DB schema initialization | `ensure_schema()` runs on every startup | Should only run on first boot, not on every import |
+| Frontend state management | Auth, threads, documents all work | No Zustand/React Context — calls backend directly from client component |
+| Multi-format chunkers | PDF (page-aware), CSV (row-aware), TXT/MD | No SectionChunker, HeadingChunker, TableChunker, CodeChunker |
+| Evaluation harness | Golden queries + RAGAS + CI | No retrieval precision metrics, no hallucination detection, no latency benchmarks |
 
 ---
 
 ## 3. Not Started
 
-| Item | Source | Why It Matters |
-|------|--------|----------------|
-| Autonomous Web Search | ANALYSIS.md §3A, Handoff | No Tavily/DDG/SerpAPI fallback when local context scores 0.0. System says "no relevant documents" instead of performing a live search |
-| Cross-Encoder Re-ranking | ANALYSIS.md §3A, Handoff Phase 2 Task 5 | Retrieves top-5 by cosine similarity only. No secondary `ms-marco-MiniLM` reranking. This is the gold standard for production RAG quality |
-| Hybrid Retrieval (BM25) | Handoff Phase 2 Task 6 | Vector-only search. No keyword/BM25 fallback for exact term matching, acronyms, APIs, or technical documentation |
-| CI/CD Benchmarking | ANALYSIS.md §3A, Handoff Phase 3 | No `.github/workflows/eval.yml`. Evaluation requires manual `python tests/test_rigorous.py` |
-| Tracing (LangSmith/OTel) | Handoff Phase 3 Task 8 | No node execution traces, no latency tracking, no token usage monitoring |
-| Ingestion Tracking | Handoff Phase 4 | No document hashes, no `is_document_ingested()` check, no deduplication, no versioning, no lifecycle management |
-| Structured Logging | ANALYSIS.md §2B | Every file uses `print()`. No `logging` module, no log levels, no structured output to files or external sinks |
-| Rate Limiting | — | No request throttling on any API endpoint |
+| Item | Why It Matters |
+|------|----------------|
+| RLS Policies on Supabase | Tables lack Row Level Security — any authenticated user could query other users' data |
+| Ingestion deduplication | No document hashes, no `is_document_ingested()` check, no versioning |
+| Rate limiting | No request throttling on any endpoint |
+| Async DB driver | `server.py` still uses synchronous `create_engine` for threads/docs CRUD |
+| Tracing (LangSmith/OTel) | No node execution traces, no latency tracking, no token usage monitoring |
 
 ---
 
@@ -77,21 +75,79 @@ Cross-referenced against: `README.md`, `ANALYSIS.md`, `CodexEngine V3 → V4 Han
 
 | Issue | File(s) | Impact |
 |-------|---------|--------|
-| `Condenser` instantiates `ChatGroq` inside the function | `codex-backend/src/nodes/condenser.py:23` | Every call re-instantiates the model; should be module-level like all other nodes |
-| `GROQ_MODEL_NAME` env var documented but never read | `codex-backend/.env.example` vs all node files | Models are hardcoded; cannot swap models without editing source code |
-| `render.yaml` has `ALLOWED_ORIGINS: "*"` | `render.yaml:15` | Security concern for production; should target the actual Vercel deployment URL |
-| DB schema seeded on every startup | `codex-backend/server.py:64` | `create_auth_tables()` runs on every `import`, not just first boot |
-| All logging uses `print()` | All codex-backend files | No `logging` module, no log levels, no structured output |
-| AGENTS.md warns about Next.js 16 breaking changes | `codex-frontend/AGENTS.md` | UI code may break if it relies on deprecated Next.js conventions |
+| `Condenser` instantiates `ChatGroq` inside function | `src/nodes/condenser.py:23` | Re-instantiates model every call; should be module-level |
+| `render.yaml` has `ALLOWED_ORIGINS: "*"` | `render.yaml:15` | Security concern for production |
+| `ingestion.py` fully synchronous | `scripts/ingestion.py` | Blocks async event loop when called from upload endpoints |
+| `data/raw/` directory stale | `codex-backend/data/raw/` | 12 old PDFs remain from pre-Supabase ingestion; no longer used |
 
 ---
 
-## 5. Immediate Next Steps (Priority Order)
+## 5. Deployment State
 
-1. **Cross-Encoder Re-ranking** — Add a `ms-marco-MiniLM` reranker between the vector retriever and the evaluator to improve context quality
-2. **Web Search Fallback** — Integrate Tavily or DuckDuckGo for queries with no local match
-3. **Hybrid Retrieval (BM25 + Vector)** — Combine keyword and vector search for better coverage
-4. **CI/CD Pipeline** — Add `.github/workflows/eval.yml` to run golden queries + RAGAS on every push
-5. **Tracing** — Wire up LangSmith or OpenTelemetry for node-level observability
-6. **Structured Logging** — Replace all `print()` with `logging` module calls
-7. **Async DB Driver** — Migrate remaining sync SQLAlchemy calls to `asyncpg` / `AsyncConnectionPool`
+| Service | Status | Config | Notes |
+|---------|--------|--------|-------|
+| Render (backend) | ❌ Not deployed | `render.yaml` exists, `sync: false` for all secrets | Needs manual env var setup in dashboard |
+| Vercel (frontend) | ❌ Not deployed | `vercel.json` exists | Needs `NEXT_PUBLIC_*` env vars set |
+| Supabase (auth, storage, DB) | ❌ Not set up | `seed.sql` + bucket name configured in code | Needs project creation in browser |
+| GitHub CI | ✅ Passing | Dummy Supabase vars + `GROQ_API_KEY` secret | Real Supabase secrets can be added later |
+| Local Arch PostgreSQL | ✅ Running | Port 5432, DB `codex_db`, user `anmol` | Used for RAG vector data in dev |
+| Docker PostgreSQL | ❌ Not running | Defined in `docker-compose.yml` | Conflicts with Arch pg on port 5432 |
+
+### Environment Variables Required
+
+| Variable | Where | Status |
+|----------|-------|--------|
+| `GROQ_API_KEY` | Root `.env`, `codex-backend/.env` | ✅ Present (gitignored) |
+| `DB_URL` | Root `.env`, `codex-backend/.env` | ✅ Present (points to Arch pg) |
+| `SUPABASE_URL` | `codex-backend/.env` | ❌ Missing |
+| `SUPABASE_ANON_KEY` | `codex-backend/.env` | ❌ Missing |
+| `NEXT_PUBLIC_SUPABASE_URL` | `codex-frontend/.env.local` | ❌ Missing |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `codex-frontend/.env.local` | ❌ Missing |
+| `NEXT_PUBLIC_API_URL` | `codex-frontend/.env.local` | ❌ Missing |
+
+---
+
+## 6. Database Options
+
+The project supports three PostgreSQL backends:
+
+| Option | Setup | Use Case |
+|--------|-------|----------|
+| **Arch native PostgreSQL** | Arch package `postgresql` + `pgvector` AUR. Running on port 5432. | Development (current) |
+| **Docker pgvector** | `docker compose up -d db` from repo root. Container on port 5432. | CI / reproducible dev |
+| **Supabase Postgres** | Cloud-hosted Postgres with pgvector. Connection string from Supabase dashboard. | Production / deployment |
+
+**Conflict note:** Arch native pg and Docker pgvector both listen on port 5432. Only one should run at a time.
+
+---
+
+## 7. API Endpoints
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/register` | No | Create account (via Supabase Auth) |
+| POST | `/login` | No | Get JWT token (via Supabase Auth) |
+| GET | `/user/me` | Yes | Current user info |
+| GET | `/threads` | Yes | List threads |
+| POST | `/threads` | Yes | Create/update thread |
+| DELETE | `/threads/{id}` | Yes | Delete thread + associated data |
+| POST | `/chat/stream` | Yes | SSE streaming chat |
+| GET | `/chat/{id}/history` | Yes | Message history |
+| POST | `/upload` | Yes | Ingest document (to Supabase Storage) |
+| POST | `/upload/temporal` | Yes | Session-scoped upload |
+| GET | `/documents` | Yes | List documents |
+| DELETE | `/documents/{filename}` | Yes | Delete document |
+| POST | `/documents/{filename}/reingest` | Yes | Re-ingest document |
+| DELETE | `/chat/{thread_id}/temporal` | Yes | Clear temporal chunks |
+
+---
+
+## 8. Immediate Next Steps (Priority Order)
+
+1. **Create Supabase project** — Needed for auth + storage to work
+2. **Deploy backend to Render** — Connect repo, set env vars
+3. **Deploy frontend to Vercel** — Connect repo, set NEXT_PUBLIC_* vars
+4. **Enable RLS on Supabase tables** — Run RLS policies in SQL Editor
+5. **Wire cross-encoder reranker** — Connect `get_reranker()` into retrieval pipeline
+6. **Clean up stale `data/raw/`** — Remove old PDFs or migrate to Supabase Storage
+7. **Add async DB driver** — Replace sync `create_engine` with `asyncpg` for threads/docs CRUD

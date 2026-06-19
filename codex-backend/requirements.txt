@@ -2,7 +2,6 @@
 pydantic>=2.6.0
 fastapi[standard]>=0.112.0
 python-multipart>=0.0.9
-slowapi>=0.1.9
 
 # --- LangGraph Orchestration & Stateful Memory ---
 langgraph>=0.0.30
@@ -25,9 +24,6 @@ fastembed>=0.2.0
 # --- Retrieval & Search ---
 rank-bm25>=0.2.2
 duckduckgo_search>=6.2.0
-
-# --- Observability ---
-langsmith>=0.1.0
 
 # --- Infrastructure ---
 python-dotenv>=1.0.1

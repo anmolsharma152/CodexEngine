@@ -38,3 +38,4 @@ archives/chroma_db_old/
 
 # LangSmith
 .langsmith*
+.aider*
