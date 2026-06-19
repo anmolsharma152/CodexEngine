@@ -31,7 +31,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.12"
 
       - name: Install dependencies
         working-directory: codex-backend
@@ -39,12 +39,27 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Seed database schema
+        working-directory: codex-backend
+        run: |
+          python -c "
+          from sqlalchemy import create_engine, text
+          engine = create_engine('postgresql+psycopg://postgres:postgres@localhost:5432/codex_db')
+          with open('supabase/seed.sql') as f:
+              sql = f.read()
+          with engine.connect() as conn:
+              conn.execute(text(sql))
+              conn.commit()
+          print('Database seeded successfully')
+          "
+
       - name: Run golden query test
         working-directory: codex-backend
         run: python tests/test_golden.py
         env:
           DB_URL: postgresql+psycopg://postgres:postgres@localhost:5432/codex_db
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           SUPABASE_URL: https://dummy-project.supabase.co
           SUPABASE_ANON_KEY: dummy-anon-key
 
@@ -54,6 +69,7 @@ jobs:
         env:
           DB_URL: postgresql+psycopg://postgres:postgres@localhost:5432/codex_db
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           SUPABASE_URL: https://dummy-project.supabase.co
           SUPABASE_ANON_KEY: dummy-anon-key
 
@@ -63,5 +79,6 @@ jobs:
         env:
           DB_URL: postgresql+psycopg://postgres:postgres@localhost:5432/codex_db
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           SUPABASE_URL: https://dummy-project.supabase.co
           SUPABASE_ANON_KEY: dummy-anon-key

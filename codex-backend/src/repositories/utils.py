@@ -1,27 +1,47 @@
 import os
 import re
-import time
+import socket
 
-from google import genai
+import httpx
 from dotenv import load_dotenv
 
 from src.log_utils import logger
 
 load_dotenv()
 
-_client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+_GEMINI_BASE = "generativelanguage.googleapis.com"
+_GEMINI_IPV4 = None
+
+
+def _resolve_gemini_ipv4():
+    global _GEMINI_IPV4
+    if _GEMINI_IPV4 is None:
+        _GEMINI_IPV4 = socket.getaddrinfo(_GEMINI_BASE, 443, socket.AF_INET)[0][4][0]
+    return _GEMINI_IPV4
 
 
 class GeminiEmbeddingWrapper:
     def __init__(self):
+        self._client = httpx.Client(timeout=30)
         self._model = "models/gemini-embedding-001"
+
+    def _make_url(self):
+        ip = _resolve_gemini_ipv4()
+        key = os.getenv("GOOGLE_API_KEY")
+        return f"https://{ip}/v1beta/{self._model}:embedContent?key={key}"
 
     def _embed(self, texts: list[str]) -> list[list[float]]:
         try:
-            result = _client.models.embed_content(
-                model=self._model, contents=texts, config={"output_dimensionality": 384}
+            resp = self._client.post(
+                self._make_url(),
+                headers={"Host": _GEMINI_BASE, "Content-Type": "application/json"},
+                json={
+                    "requests": [{"model": self._model, "content": {"parts": [{"text": t}]}, "outputDimensionality": 384} for t in texts]
+                },
             )
-            return [e.values for e in result.embeddings]
+            resp.raise_for_status()
+            data = resp.json()
+            return [e["values"] for e in data.get("embeddings", [])]
         except Exception as e:
             logger.error(f"Gemini embedding failed: {e}")
             raise
