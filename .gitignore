@@ -39,3 +39,6 @@ archives/chroma_db_old/
 # LangSmith
 .langsmith*
 .aider*
+
+# Jules / external analysis artifacts
+ANALYSIS*.md
