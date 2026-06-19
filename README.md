@@ -30,7 +30,7 @@ flowchart TD
         A --> Resp[SSE Response]
 
         subgraph Retrieval [Hybrid Retrieval]
-            VEC[Vector Search<br>Gemini Embedding]
+            VEC[Vector Search]
             BM[BM25 Keyword]
             WEB[DuckDuckGo<br>Web Fallback]
             Fuse[Fusion + Rerank]
@@ -44,7 +44,8 @@ flowchart TD
 
     subgraph External [External APIs]
         Groq[Groq<br>LLM — llama-3.1]
-        Gemini[Google Gemini<br>embeddings — free tier]
+        Gemini[Google Gemini<br>embeddings — production]
+        FastEmbed[fastembed ONNX<br>embeddings — local/CI]
     end
 
     User --> Frontend
@@ -62,17 +63,25 @@ flowchart TD
     VEC & BM & WEB --> Fuse
     Fuse --> Ret
 
-    VEC ---> Gemini
+    VEC ---> FastEmbed
+    VEC -.->|fallback| Gemini
     Backend ---> Groq
 ```
 
-### Embedding Model
+### Running Modes
 
-Embeddings are produced via the **Google Gemini API** using `models/gemini-embedding-001` (384-dimensional output via `output_dimensionality`). This avoids running a heavy ONNX model locally, keeping the container small enough for Render's free tier (512MB RAM).
+The system auto-detects its environment and switches between two modes:
 
-- **API key**: Get a free key at https://aistudio.google.com/app/apikey
-- **Environment variable**: `GOOGLE_API_KEY`
-- **On failure**: the retriever degrades to BM25-only search, so the system stays functional even if the embedding API is unreachable.
+| Feature | Local / CI (≥1.5GB RAM) | Render Production (512MB) |
+|---|---|---|
+| **Embeddings** | fastembed (ONNX, `bge-small-en-v1.5`) | Google Gemini API |
+| **Reranker** | CrossEncoder (`ms-marco-MiniLM-L-6-v2`) | Score-based sort fallback |
+| **Detection** | `_low_memory()` reads `/proc/meminfo` — `MemTotal > 1.5GB` → local mode | `MemTotal < 1.5GB` → Gemini-only |
+
+Both modes produce **384-dimensional vectors** compatible with the `vector(384)` schema. On Render, the retriever degrades to BM25-only if the Gemini API is unreachable.
+
+- **Google API key** (production): Get a free key at https://aistudio.google.com/app/apikey → set `GOOGLE_API_KEY`
+- **Groq API key** (both modes): Set `GROQ_API_KEY` for LLM inference
 
 ### Directory Structure
 
@@ -85,8 +94,9 @@ CodexEngine/
 │   │   ├── log_utils.py       # Structured logging
 │   │   ├── llm.py             # Centralized LLM init
 │   │   ├── supabase_client.py # Supabase client singleton
+│   │   ├── storage_client.py  # Raw httpx client for Supabase Storage
 │   │   ├── repositories/
-│   │   │   └── utils.py       # Embedding (Gemini API) + BM25
+│   │   │   └── utils.py       # Embedding (fastembed / Gemini fallback) + BM25 + Reranker
 │   │   └── nodes/
 │   │       ├── router.py      # Intent classifier (3-lane)
 │   │       ├── retriever.py   # Hybrid: vector + BM25 + web fallback
@@ -96,7 +106,7 @@ CodexEngine/
 │   │       └── actor.py       # Response synthesis with provenance
 │   ├── scripts/ingestion.py   # PDF/CSV/TXT ingestion
 │   ├── tests/                 # test_golden.py, test_rigorous.py
-│   ├── eval/                  # RAGAS eval, golden queries
+│   ├── eval/                  # ragas_eval.py, golden_queries.json
 │   ├── supabase/seed.sql      # Database schema
 │   ├── Dockerfile
 │   └── requirements.txt
@@ -163,6 +173,10 @@ docker compose up -d db       # runs pgvector on port 5432
 uvicorn server:app --reload --host 127.0.0.1 --port 8000
 # or: uv run fastapi dev server.py
 ```
+
+The server auto-detects its environment:
+- **Local/CI**: loads fastembed ONNX models + CrossEncoder reranker
+- **Low-memory** (Render 512MB): uses Gemini API for embeddings, score-based reranking
 
 ### 4. Frontend Setup
 
