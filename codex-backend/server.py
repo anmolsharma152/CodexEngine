@@ -72,10 +72,10 @@ class AuthUser:
         self.token = token
 
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security_scheme)):
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security_scheme)):
     try:
-        user = supabase.auth.get_user(credentials.credentials).user
-        return AuthUser(user, credentials.credentials)
+        resp = await asyncio.to_thread(supabase.auth.get_user, credentials.credentials)
+        return AuthUser(resp.user, credentials.credentials)
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -103,9 +103,9 @@ def _storage_path(user_id: str, filename: str, thread_id: str | None = None) -> 
     return f"{user_id}/{filename}"
 
 
-def _download_from_storage(storage_path: str, auth_token: str | None = None) -> str | None:
+async def _download_from_storage(storage_path: str, auth_token: str | None = None) -> str | None:
     try:
-        data = storage_client.download_file(STORAGE_BUCKET, storage_path, auth_token)
+        data = await storage_client.download_file(STORAGE_BUCKET, storage_path, auth_token)
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(storage_path)[1])
         tmp.write(data)
         tmp.close()
@@ -115,9 +115,9 @@ def _download_from_storage(storage_path: str, auth_token: str | None = None) -> 
         return None
 
 
-def _list_storage_files(prefix: str, auth_token: str | None = None) -> list[dict]:
+async def _list_storage_files(prefix: str, auth_token: str | None = None) -> list[dict]:
     try:
-        objects = storage_client.list_files(STORAGE_BUCKET, prefix, auth_token)
+        objects = await storage_client.list_files(STORAGE_BUCKET, prefix, auth_token)
         files = []
         for obj in objects:
             name = obj.get("name")
@@ -133,9 +133,9 @@ def _list_storage_files(prefix: str, auth_token: str | None = None) -> list[dict
         return []
 
 
-def _remove_storage_paths(paths: list[str], auth_token: str | None = None):
+async def _remove_storage_paths(paths: list[str], auth_token: str | None = None):
     try:
-        storage_client.remove_files(STORAGE_BUCKET, paths, auth_token)
+        await storage_client.remove_files(STORAGE_BUCKET, paths, auth_token)
     except Exception as e:
         logger.error(f"Failed to remove storage paths {paths}: {e}")
 
@@ -172,7 +172,7 @@ def create_graph(checkpointer):
 # Lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    storage_client.ensure_bucket(STORAGE_BUCKET)
+    await storage_client.ensure_bucket(STORAGE_BUCKET)
     checkpointer_url = DB_URL.replace("postgresql+psycopg://", "postgresql://")
     async with AsyncPostgresSaver.from_conn_string(checkpointer_url) as checkpointer:
         await checkpointer.setup()
@@ -230,11 +230,10 @@ async def register_endpoint(request: AuthRequest):
     if not email or not password:
         return JSONResponse(status_code=400, content={"message": "Email and password are required"})
     try:
-        resp = supabase.auth.sign_up({
-            "email": email,
-            "password": password,
-            "options": {"data": {"username": username}},
-        })
+        resp = await asyncio.to_thread(
+            supabase.auth.sign_up,
+            {"email": email, "password": password, "options": {"data": {"username": username}}},
+        )
         if resp.user:
             logger.info(f"User registered: {email} ({resp.user.id})")
             return {"message": "User registered successfully", "user_id": resp.user.id}
@@ -251,7 +250,7 @@ async def login_endpoint(request: AuthRequest):
     if not email or not password:
         return JSONResponse(status_code=400, content={"message": "Email and password are required"})
     try:
-        resp = supabase.auth.sign_in_with_password({"email": email, "password": password})
+        resp = await asyncio.to_thread(supabase.auth.sign_in_with_password, {"email": email, "password": password})
         if resp.session:
             logger.info(f"User logged in: {email}")
             return {
@@ -385,9 +384,9 @@ async def upload_document(file: UploadFile = File(...), current_user=Depends(get
     try:
         raw = await file.read()
         storage_path = _storage_path(current_user.id, file.filename)
-        storage_client.upload_file(STORAGE_BUCKET, storage_path, raw, file.content_type, auth_token=current_user.token)
+        await storage_client.upload_file(STORAGE_BUCKET, storage_path, raw, file.content_type, auth_token=current_user.token)
 
-        tmp_path = _download_from_storage(storage_path, auth_token=current_user.token)
+        tmp_path = await _download_from_storage(storage_path, auth_token=current_user.token)
         if not tmp_path:
             return JSONResponse(status_code=500, content={"message": "Failed to retrieve uploaded file for ingestion"})
         renamed = os.path.join(os.path.dirname(tmp_path), file.filename)
@@ -406,7 +405,7 @@ async def upload_document(file: UploadFile = File(...), current_user=Depends(get
 async def list_documents_endpoint(current_user=Depends(get_current_user)):
     try:
         prefix = f"{current_user.id}/"
-        storage_files = _list_storage_files(prefix, auth_token=current_user.token)
+        storage_files = await _list_storage_files(prefix, auth_token=current_user.token)
 
         with engine.connect() as conn:
             sql = text("""
@@ -447,7 +446,7 @@ async def delete_document_endpoint(filename: str, thread_id: str = None, current
         else:
             storage_path = _storage_path(current_user.id, filename)
 
-        _remove_storage_paths([storage_path], auth_token=current_user.token)
+        await _remove_storage_paths([storage_path], auth_token=current_user.token)
 
         with engine.connect() as conn:
             if thread_id:
@@ -472,7 +471,7 @@ async def reingest_document(filename: str, thread_id: str = None, current_user=D
         else:
             storage_path = _storage_path(current_user.id, filename)
 
-        tmp_path = _download_from_storage(storage_path, auth_token=current_user.token)
+        tmp_path = await _download_from_storage(storage_path, auth_token=current_user.token)
         if not tmp_path:
             return JSONResponse(status_code=404, content={"message": "Source file not found in storage."})
         renamed = os.path.join(os.path.dirname(tmp_path), filename)
@@ -501,9 +500,9 @@ async def upload_temporal_document(thread_id: str, file: UploadFile = File(...),
         verify_thread_ownership(thread_id, current_user.id)
         raw = await file.read()
         storage_path = _storage_path(current_user.id, file.filename, thread_id)
-        storage_client.upload_file(STORAGE_BUCKET, storage_path, raw, file.content_type, auth_token=current_user.token)
+        await storage_client.upload_file(STORAGE_BUCKET, storage_path, raw, file.content_type, auth_token=current_user.token)
 
-        tmp_path = _download_from_storage(storage_path, auth_token=current_user.token)
+        tmp_path = await _download_from_storage(storage_path, auth_token=current_user.token)
         if not tmp_path:
             return JSONResponse(status_code=500, content={"message": "Failed to retrieve uploaded file for ingestion"})
         renamed = os.path.join(os.path.dirname(tmp_path), file.filename)
@@ -523,10 +522,10 @@ async def delete_temporal_chunks_endpoint(thread_id: str, current_user=Depends(g
     try:
         verify_thread_ownership(thread_id, current_user.id)
         prefix = f"{current_user.id}/{thread_id}/"
-        objects = storage_client.list_files(STORAGE_BUCKET, prefix, auth_token=current_user.token)
+        objects = await storage_client.list_files(STORAGE_BUCKET, prefix, auth_token=current_user.token)
         paths_to_remove = [f"{prefix}{o['name']}" for o in objects if o.get("name") and not o["name"].endswith("/")]
         if paths_to_remove:
-            _remove_storage_paths(paths_to_remove, auth_token=current_user.token)
+            await _remove_storage_paths(paths_to_remove, auth_token=current_user.token)
 
         with engine.connect() as conn:
             res = conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'thread_id' = :tid"), {"tid": thread_id})

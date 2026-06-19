@@ -1,5 +1,6 @@
 import os
 import asyncio
+from functools import partial
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 from src.state import AgentState
@@ -9,7 +10,6 @@ from src.log_utils import logger
 load_dotenv()
 
 engine = create_engine(os.getenv("DB_URL"))
-ef = get_embedding_function()
 
 SIMILARITY_THRESHOLD = 0.35
 VECTOR_TOP_K = 10
@@ -134,7 +134,8 @@ async def retrieve_hybrid_context(state: AgentState, config=None):
     user_id_str = str(user_id) if user_id is not None else ""
 
     try:
-        query_emb = ef.embed_query(current_search)
+        ef = await asyncio.to_thread(get_embedding_function)
+        query_emb = await asyncio.to_thread(ef.embed_query, current_search)
         vector_docs = await asyncio.to_thread(_vector_search, query_emb, thread_id, user_id_str)
     except Exception as e:
         logger.warning(f"Vector embedding failed, falling back to BM25-only: {e}")
@@ -142,18 +143,18 @@ async def retrieve_hybrid_context(state: AgentState, config=None):
 
     bm25_docs = await asyncio.to_thread(_bm25_search, current_search)
 
-    all_candidates = _deduplicate(vector_docs + bm25_docs)
+    all_candidates = await asyncio.to_thread(_deduplicate, vector_docs + bm25_docs)
 
     if not all_candidates:
         logger.info("No local results — falling back to web search")
         web_docs = await _web_search(current_search)
         if web_docs:
-            context = _format_chunks(web_docs)
+            context = await asyncio.to_thread(_format_chunks, web_docs)
             return {"context": context, "next_step": "evaluate"}
         return {"context": "", "next_step": "evaluate"}
 
-    final_docs = _rerank(current_search, all_candidates)
-    context = _format_chunks(final_docs)
+    final_docs = await asyncio.to_thread(_rerank, current_search, all_candidates)
+    context = await asyncio.to_thread(_format_chunks, final_docs)
 
     logger.info(f"Retrieved {len(vector_docs)} vector + {len(bm25_docs)} bm25 → {len(final_docs)} final")
     return {"context": context, "next_step": "evaluate"}
