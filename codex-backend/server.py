@@ -27,6 +27,7 @@ from src.nodes.nodes import (
 )
 from src.log_utils import logger
 from src.supabase_client import supabase
+import src.storage_client as storage_client
 
 load_dotenv()
 DB_URL = os.environ["DB_URL"]
@@ -96,7 +97,7 @@ def _storage_path(user_id: str, filename: str, thread_id: str | None = None) -> 
 
 def _download_from_storage(storage_path: str) -> str | None:
     try:
-        data = supabase.storage.from_(STORAGE_BUCKET).download(storage_path)
+        data = storage_client.download_file(STORAGE_BUCKET, storage_path)
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(storage_path)[1])
         tmp.write(data)
         tmp.close()
@@ -108,7 +109,7 @@ def _download_from_storage(storage_path: str) -> str | None:
 
 def _list_storage_files(prefix: str) -> list[dict]:
     try:
-        objects = supabase.storage.from_(STORAGE_BUCKET).list(prefix)
+        objects = storage_client.list_files(STORAGE_BUCKET, prefix)
         files = []
         for obj in objects:
             name = obj.get("name")
@@ -126,7 +127,7 @@ def _list_storage_files(prefix: str) -> list[dict]:
 
 def _remove_storage_paths(paths: list[str]):
     try:
-        supabase.storage.from_(STORAGE_BUCKET).remove(paths)
+        storage_client.remove_files(STORAGE_BUCKET, paths)
     except Exception as e:
         logger.error(f"Failed to remove storage paths {paths}: {e}")
 
@@ -375,7 +376,7 @@ async def upload_document(file: UploadFile = File(...), current_user=Depends(get
     try:
         raw = await file.read()
         storage_path = _storage_path(current_user.id, file.filename)
-        supabase.storage.from_(STORAGE_BUCKET).upload(storage_path, raw, {"content-type": file.content_type or "application/octet-stream", "upsert": "true"})
+        storage_client.upload_file(STORAGE_BUCKET, storage_path, raw, file.content_type)
 
         tmp_path = _download_from_storage(storage_path)
         if not tmp_path:
@@ -491,7 +492,7 @@ async def upload_temporal_document(thread_id: str, file: UploadFile = File(...),
         verify_thread_ownership(thread_id, current_user.id)
         raw = await file.read()
         storage_path = _storage_path(current_user.id, file.filename, thread_id)
-        supabase.storage.from_(STORAGE_BUCKET).upload(storage_path, raw, {"content-type": file.content_type or "application/octet-stream", "upsert": "true"})
+        storage_client.upload_file(STORAGE_BUCKET, storage_path, raw, file.content_type)
 
         tmp_path = _download_from_storage(storage_path)
         if not tmp_path:
@@ -513,7 +514,7 @@ async def delete_temporal_chunks_endpoint(thread_id: str, current_user=Depends(g
     try:
         verify_thread_ownership(thread_id, current_user.id)
         prefix = f"{current_user.id}/{thread_id}/"
-        objects = supabase.storage.from_(STORAGE_BUCKET).list(prefix)
+        objects = storage_client.list_files(STORAGE_BUCKET, prefix)
         paths_to_remove = [f"{prefix}{o['name']}" for o in objects if o.get("name") and not o["name"].endswith("/")]
         if paths_to_remove:
             _remove_storage_paths(paths_to_remove)
