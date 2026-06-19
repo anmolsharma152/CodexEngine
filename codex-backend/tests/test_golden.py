@@ -25,18 +25,15 @@ config = {"configurable": {"thread_id": "test_golden_thread"}}
 
 async def run():
     final_state = None
-    # Stream and capture the final state using the async graph stream
     async for output in app.astream(inputs, config):
         for key, value in output.items():
-            print(f"--- Node '{key}' Finished ---")
             final_state = value
 
-    print("\n--- FINAL NARRATIVE ANSWER ---")
-    # Access the answer from the Actor's final output ("response")
-    if final_state and "response" in final_state:
-        print(final_state["response"])
-    else:
-        print("No response generated. Check Critic scores.")
+    assert final_state is not None, "Pipeline produced no final state"
+    response_text = final_state.get("response", "")
+    assert response_text, f"Response was empty. State: {final_state}"
+    assert len(response_text) > 50, f"Response too short ({len(response_text)} chars)"
+    print(f"PASS: Response generated ({len(response_text)} chars)")
 
 
 if __name__ == "__main__":

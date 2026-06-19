@@ -157,25 +157,29 @@ async def main():
         logger.info(f"    faith={r['faithfulness']} rel={r['answer_relevancy']} "
                     f"prec={r['context_precision']} recall={r['context_recall']}")
 
-    if results:
-        report = {
-            "generated_at": datetime.now().isoformat(),
-            "model": "llama-3.3-70b-versatile (actor) / llama-3.1-8b-instant (judge)",
-            "metrics": ["faithfulness", "answer_relevancy", "context_precision", "context_recall"],
-            "aggregate": {
-                "faithfulness_mean": round(statistics.mean(r["faithfulness"] for r in results), 4),
-                "answer_relevancy_mean": round(statistics.mean(r["answer_relevancy"] for r in results), 4),
-                "context_precision_mean": round(statistics.mean(r["context_precision"] for r in results), 4),
-                "context_recall_mean": round(statistics.mean(r["context_recall"] for r in results), 4),
-            },
-            "results": results,
-        }
-        with open("eval/ragas_report.json", "w") as f:
-            json.dump(report, f, indent=2)
-        logger.info("RAGAS Report:")
-        for m in report["metrics"]:
-            logger.info(f"  {m}: {report['aggregate'][m + '_mean']:.4f}")
-        logger.info(f"Report saved to eval/ragas_report.json")
+    assert results, "No results produced"
+    report = {
+        "generated_at": datetime.now().isoformat(),
+        "model": "llama-3.3-70b-versatile (actor) / llama-3.1-8b-instant (judge)",
+        "metrics": ["faithfulness", "answer_relevancy", "context_precision", "context_recall"],
+        "aggregate": {
+            "faithfulness_mean": round(statistics.mean(r["faithfulness"] for r in results), 4),
+            "answer_relevancy_mean": round(statistics.mean(r["answer_relevancy"] for r in results), 4),
+            "context_precision_mean": round(statistics.mean(r["context_precision"] for r in results), 4),
+            "context_recall_mean": round(statistics.mean(r["context_recall"] for r in results), 4),
+        },
+        "results": results,
+    }
+    with open("eval/ragas_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+    logger.info("RAGAS Report:")
+    for m in report["metrics"]:
+        logger.info(f"  {m}: {report['aggregate'][m + '_mean']:.4f}")
+    logger.info(f"Report saved to eval/ragas_report.json")
+
+    # Verify all queries produced non-zero answer lengths (pipeline works)
+    for r in results:
+        assert r["answer_length"] > 0, f"[{r['query_id']}] Empty answer"
 
 
 if __name__ == "__main__":

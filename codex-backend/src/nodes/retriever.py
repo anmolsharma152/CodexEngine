@@ -1,15 +1,11 @@
 import os
 import asyncio
 from functools import partial
-from sqlalchemy import create_engine, text
-from dotenv import load_dotenv
+from sqlalchemy import text
 from src.state import AgentState
 from src.repositories.utils import get_embedding_function, get_bm25_index, get_reranker, tokenize
+from src.db import engine
 from src.log_utils import logger
-
-load_dotenv()
-
-engine = create_engine(os.getenv("DB_URL"))
 
 SIMILARITY_THRESHOLD = 0.35
 VECTOR_TOP_K = 10

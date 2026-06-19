@@ -6,14 +6,14 @@ import re
 import csv
 import json
 import fitz
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from src.repositories.utils import get_embedding_function
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
+from src.db import engine
 from src.log_utils import logger
 
 load_dotenv()
-engine = create_engine(os.getenv("DB_URL"))
 
 _ef = None
 def get_ef():

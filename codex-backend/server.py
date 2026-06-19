@@ -3,9 +3,11 @@ import asyncio
 import uuid
 import json
 import tempfile
+import time
+from collections import defaultdict
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, status
+from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -13,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 from scripts.ingestion import ingest_file
 from src.state import AgentState
@@ -27,48 +29,26 @@ from src.nodes.nodes import (
 )
 from src.log_utils import logger
 from src.supabase_client import supabase
+from src.db import engine, ensure_schema
 import src.storage_client as storage_client
 
 load_dotenv()
 DB_URL = os.environ["DB_URL"]
-engine = create_engine(DB_URL)
+
+# Simple in-memory IP-based rate limiter
+_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+_RATE_LIMIT_WINDOW = 60  # seconds
+_RATE_LIMIT_MAX = 10  # requests per window
 
 
-def ensure_schema():
-    with engine.connect() as conn:
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS threads (
-                id VARCHAR(255) PRIMARY KEY,
-                user_id UUID NOT NULL,
-                title VARCHAR(255) NOT NULL,
-                timestamp BIGINT NOT NULL,
-                pinned BOOLEAN DEFAULT FALSE
-            );
-        """))
-        conn.execute(text("""
-            DO $$ BEGIN
-                IF EXISTS (
-                    SELECT 1 FROM information_schema.columns
-                    WHERE table_name = 'threads' AND column_name = 'user_id' AND data_type = 'integer'
-                ) THEN
-                    ALTER TABLE threads DROP CONSTRAINT IF EXISTS threads_user_id_fkey;
-                    ALTER TABLE threads ALTER COLUMN user_id TYPE UUID USING '00000000-0000-0000-0000-000000000000'::uuid;
-                END IF;
-            END $$;
-        """))
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS prose_chunks (
-                id BIGSERIAL PRIMARY KEY,
-                content TEXT,
-                metadata JSONB,
-                embedding vector(384)
-            );
-        """))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_prose_chunks_metadata ON prose_chunks USING GIN (metadata);"))
-        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_threads_user_id ON threads (user_id);"))
-        conn.commit()
-
+async def _check_rate_limit(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    timestamps = _rate_limit_store[ip]
+    timestamps[:] = [t for t in timestamps if now - t < _RATE_LIMIT_WINDOW]
+    if len(timestamps) >= _RATE_LIMIT_MAX:
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+    timestamps.append(now)
 
 ensure_schema()
 
@@ -234,7 +214,8 @@ class ChatRequest(BaseModel):
 
 # Endpoints
 @app.post("/register")
-async def register_endpoint(request: AuthRequest):
+async def register_endpoint(request: AuthRequest, http_request: Request):
+    await _check_rate_limit(http_request)
     email = request.email.strip().lower()
     password = request.password
     username = request.username or email.split("@")[0]
@@ -255,7 +236,8 @@ async def register_endpoint(request: AuthRequest):
 
 
 @app.post("/login")
-async def login_endpoint(request: AuthRequest):
+async def login_endpoint(request: AuthRequest, http_request: Request):
+    await _check_rate_limit(http_request)
     email = request.email.strip().lower()
     password = request.password
     if not email or not password:

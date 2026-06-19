@@ -75,7 +75,8 @@ jobs:
 
       - name: Run RAGAS eval
         working-directory: codex-backend
-        run: python eval/ragas_eval.py || echo "RAGAS eval skipped (rate limits)"
+        run: python eval/ragas_eval.py
+        continue-on-error: true
         env:
           DB_URL: postgresql+psycopg://postgres:postgres@localhost:5432/codex_db
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
