@@ -53,13 +53,47 @@ class GeminiEmbeddingWrapper:
         return self._embed([text])[0]
 
 
+class FastEmbedWrapper:
+    def __init__(self):
+        from fastembed import TextEmbedding
+        self._model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [e.tolist() for e in self._model.passage_embed(texts)]
+
+    def embed_query(self, text: str) -> list[float]:
+        return next(self._model.query_embed([text])).tolist()
+
+
 _embedding_model = None
+
+
+def _low_memory() -> bool:
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemTotal:"):
+                    kb = int(line.split()[1])
+                    return kb < 1_500_000  # under ~1.5GB total RAM
+    except Exception:
+        pass
+    return False
 
 
 def get_embedding_function():
     global _embedding_model
-    if _embedding_model is None:
+    if _embedding_model is not None:
+        return _embedding_model
+    if _low_memory():
+        logger.info("Low-memory environment detected, using Gemini API for embeddings")
         _embedding_model = GeminiEmbeddingWrapper()
+    else:
+        try:
+            _embedding_model = FastEmbedWrapper()
+            logger.info("Using fastembed (local ONNX) for embeddings")
+        except Exception as e:
+            logger.warning(f"fastembed unavailable, falling back to Gemini API: {e}")
+            _embedding_model = GeminiEmbeddingWrapper()
     return _embedding_model
 
 
@@ -107,4 +141,17 @@ _reranker = None
 
 
 def get_reranker():
-    return None
+    global _reranker
+    if _reranker is not None:
+        return _reranker
+    if _low_memory():
+        logger.info("Low-memory environment detected, skipping local reranker")
+        return None
+    try:
+        from fastembed.rerank import CrossEncoder
+        _reranker = CrossEncoder(model_name="Xenova/ms-marco-MiniLM-L-6-v2")
+        logger.info("Using CrossEncoder reranker (local ONNX)")
+    except Exception as e:
+        logger.warning(f"Reranker unavailable: {e}")
+        _reranker = None
+    return _reranker
