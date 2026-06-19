@@ -173,6 +173,11 @@ async def lifespan(app: FastAPI):
 
 # FastAPI app
 app = FastAPI(title="CodexEngine V4 API", lifespan=lifespan)
+
+
+@app.get("/")
+async def root():
+    return {"status": "ok", "app": "CodexEngine V4", "version": "4.0"}
 ALLOWED_ORIGINS = os.environ.get(
     "ALLOWED_ORIGINS",
     "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001",
