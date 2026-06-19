@@ -42,3 +42,7 @@ archives/chroma_db_old/
 
 # Jules / external analysis artifacts
 ANALYSIS*.md
+
+# AI agent configs (unused)
+AGENTS.md
+CLAUDE.md
