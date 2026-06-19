@@ -46,3 +46,6 @@ ANALYSIS*.md
 # AI agent configs (unused)
 AGENTS.md
 CLAUDE.md
+
+# Stale pre-rename directory
+codex-ui/

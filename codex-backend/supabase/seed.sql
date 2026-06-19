@@ -10,6 +10,17 @@ CREATE TABLE IF NOT EXISTS threads (
     pinned BOOLEAN DEFAULT FALSE
 );
 
+-- Fix legacy integer user_id column (pre-Supabase migration)
+DO $$ BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'threads' AND column_name = 'user_id' AND data_type = 'integer'
+    ) THEN
+        ALTER TABLE threads DROP CONSTRAINT IF EXISTS threads_user_id_fkey;
+        ALTER TABLE threads ALTER COLUMN user_id TYPE UUID USING '00000000-0000-0000-0000-000000000000'::uuid;
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS prose_chunks (
     id BIGSERIAL PRIMARY KEY,
     content TEXT,

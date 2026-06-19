@@ -136,7 +136,12 @@ export default function Home() {
     if (token) {
       headers.set("Authorization", `Bearer ${token}`);
     }
-    const response = await fetch(url, { ...options, headers });
+    let response: Response;
+    try {
+      response = await fetch(url, { ...options, headers });
+    } catch {
+      return new Response(JSON.stringify({ message: "Network error" }), { status: 502 });
+    }
     if (response.status === 401) {
       logout();
       setAuthError("Session expired. Please log in again.");
@@ -322,7 +327,7 @@ export default function Home() {
           method: "DELETE",
         });
       }
-      fetchSessionFiles();
+      fetchDocuments();
     } catch (err) {
       console.error("Failed to delete temporal backend files:", err);
     }
@@ -430,7 +435,7 @@ export default function Home() {
 
       if (response.ok) {
         setStatus("Temporal document ingested.");
-        fetchSessionFiles();
+        fetchDocuments();
       } else {
         setStatus("Temporal upload failed.");
       }
@@ -450,10 +455,7 @@ export default function Home() {
         method: "DELETE",
       });
       if (res.ok) {
-        fetchSessionFiles();
-        if (showDocManager) {
-          fetchDocuments();
-        }
+        fetchDocuments();
       }
     } catch (err) {
       console.error("Error removing temporal file:", err);
@@ -473,7 +475,6 @@ export default function Home() {
       if (res.ok) {
         setUploadStatus(`Deleted: ${filename}`);
         fetchDocuments();
-        fetchSessionFiles();
         setTimeout(() => setUploadStatus(""), 2000);
       } else {
         setUploadStatus("Failed to delete document.");
@@ -496,7 +497,6 @@ export default function Home() {
       if (res.ok) {
         setUploadStatus(`Re-ingestion triggered for ${filename}`);
         fetchDocuments();
-        fetchSessionFiles();
         setTimeout(() => setUploadStatus(""), 2000);
       } else {
         const errorData = await res.json();
@@ -562,32 +562,37 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (showDocManager) {
+    if (showDocManager && token) {
       fetchDocuments();
     }
-  }, [showDocManager]);
+  }, [showDocManager, token]);
 
   useEffect(() => {
-    if (threadId) {
-      fetchSessionFiles();
-    } else {
-      setSessionFiles([]);
+    if (threadId && documents.length > 0) {
+      setSessionFiles(documents.filter(doc => doc.thread_id === threadId));
     }
-  }, [threadId]);
+  }, [threadId, documents]);
 
+  const pollCountRef = useRef(0);
   useEffect(() => {
     const hasPending = sessionFiles.some(f => f.status === "Pending");
-    if (hasPending) {
+    if (hasPending && token && pollCountRef.current < 30) {
+      pollCountRef.current++;
       const timer = setTimeout(() => {
-        fetchSessionFiles();
+        fetchDocuments();
       }, 2000);
       return () => clearTimeout(timer);
     }
-  }, [sessionFiles]);
+    if (!hasPending) {
+      pollCountRef.current = 0;
+    }
+  }, [sessionFiles, token]);
 
   useEffect(() => {
-    fetchDocuments();
-  }, []);
+    if (token) {
+      fetchDocuments();
+    }
+  }, [token]);
 
   useEffect(() => {
     selectSuggestedPrompts();
