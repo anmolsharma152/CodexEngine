@@ -1,29 +1,44 @@
 import os
 import re
-from functools import lru_cache
 
+import httpx
 from dotenv import load_dotenv
-from fastembed import TextEmbedding
 
 load_dotenv()
 
+HF_EMBED_URL = os.getenv(
+    "HF_EMBED_URL",
+    "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2",
+)
 
-class FastEmbedWrapper:
+
+class APIEmbeddingWrapper:
     def __init__(self):
-        self.model = TextEmbedding()
+        self._client = httpx.Client(timeout=30)
+
+    def _embed(self, texts: list[str]) -> list[list[float]]:
+        resp = self._client.post(HF_EMBED_URL, json={"inputs": texts})
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
+            return data
+        return [data]
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return [list(map(float, x)) for x in self.model.embed(texts)]
+        return self._embed(texts)
 
     def embed_query(self, text: str) -> list[float]:
-        return list(map(float, next(self.model.embed([text]))))
+        return self._embed([text])[0]
+
+
+_embedding_model = None
 
 
 def get_embedding_function():
-    return FastEmbedWrapper()
-
-
-emb = get_embedding_function()
+    global _embedding_model
+    if _embedding_model is None:
+        _embedding_model = APIEmbeddingWrapper()
+    return _embedding_model
 
 
 def tokenize(text: str) -> list[str]:
@@ -64,13 +79,4 @@ _reranker = None
 
 
 def get_reranker():
-    global _reranker
-    if _reranker is not None:
-        return _reranker
-    from fastembed.rerank import Reranker
-
-    _reranker = Reranker(
-        model_name="Xenova/ms-marco-MiniLM-L-6-v2",
-        local_files_only=False,
-    )
-    return _reranker
+    return None

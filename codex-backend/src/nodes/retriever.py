@@ -55,25 +55,24 @@ def _bm25_search(query_text: str) -> list[dict]:
 
 
 def _rerank(query_text: str, candidates: list[dict]) -> list[dict]:
-    if len(candidates) <= FINAL_TOP_K:
-        return candidates
-    try:
-        reranker = get_reranker()
-        pairs = [(query_text, d["content"]) for d in candidates]
-        results = list(reranker.rerank(pairs))
-        reranked = []
-        for r in results:
-            for d in candidates:
-                if d["content"] == r.text and d not in reranked:
-                    d["rerank_score"] = r.score
-                    reranked.append(d)
-                    break
-        reranked.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
-        return reranked[:FINAL_TOP_K]
-    except Exception as e:
-        logger.warning(f"Reranker failed, using score-based merge: {e}")
-        candidates.sort(key=lambda x: x["score"], reverse=True)
-        return candidates[:FINAL_TOP_K]
+    reranker = get_reranker()
+    if reranker is not None:
+        try:
+            pairs = [(query_text, d["content"]) for d in candidates]
+            results = list(reranker.rerank(pairs))
+            reranked = []
+            for r in results:
+                for d in candidates:
+                    if d["content"] == r.text and d not in reranked:
+                        d["rerank_score"] = r.score
+                        reranked.append(d)
+                        break
+            reranked.sort(key=lambda x: x.get("rerank_score", 0), reverse=True)
+            return reranked[:FINAL_TOP_K]
+        except Exception as e:
+            logger.warning(f"Reranker failed, using score-based merge: {e}")
+    candidates.sort(key=lambda x: x["score"], reverse=True)
+    return candidates[:FINAL_TOP_K]
 
 
 def _deduplicate(docs: list[dict]) -> list[dict]:

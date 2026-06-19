@@ -14,7 +14,13 @@ from src.log_utils import logger
 
 load_dotenv()
 engine = create_engine(os.getenv("DB_URL"))
-ef = get_embedding_function()
+
+_ef = None
+def get_ef():
+    global _ef
+    if _ef is None:
+        _ef = get_embedding_function()
+    return _ef
 
 
 def clean_text(t):
@@ -85,7 +91,7 @@ def ingest_file(file_path: str, thread_id: str = None, user_id: str = None):
 
     logger.info(f"Embedding and inserting {len(chunks_data)} chunks...")
     texts = [c["content"] for c in chunks_data]
-    embeddings = ef.embed_documents(texts)
+    embeddings = get_ef().embed_documents(texts)
 
     with engine.connect() as conn:
         for chunk, emb in zip(chunks_data, embeddings):
