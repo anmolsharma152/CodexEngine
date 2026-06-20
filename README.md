@@ -70,12 +70,12 @@ flowchart TD
         direction LR
         AL[Agent Loop<br>while-true LLM→tool→loop]
 
-        subgraph Tools [@tool Registry]
-            AI[analyze_intent]
-            VS[vector_search]
-            WS[web_search]
-            ER[evaluate_retrieval]
-            RQ[rewrite_query]
+        subgraph Tools["Tool Registry"]
+            AI["analyze_intent"]
+            VS["vector_search"]
+            WS["web_search"]
+            ER["evaluate_retrieval"]
+            RQ["rewrite_query"]
         end
 
         Rate[Rate Limiter<br>8 req/min per user]
