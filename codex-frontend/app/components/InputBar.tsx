@@ -48,9 +48,9 @@ export default function InputBar({
       )}
 
       <form onSubmit={onSend} className="max-w-4xl mx-auto relative flex items-center group">
-        <input ref={inputRef} type="text" value={input} onChange={(e) => setInput(e.target.value)} disabled={isStreaming} placeholder="Query the engine..." className="w-full bg-[var(--bg-surface)]/60 text-primary border border-[var(--border-default)] rounded-full pl-6 pr-28 py-4 focus:outline-none focus:border-[var(--accent-blue)]/50 focus:bg-[var(--bg-hover)] transition-all disabled:opacity-50 backdrop-blur-xl shadow-lg text-sm placeholder:text-[var(--text-tertiary)]" />
-        <div className="absolute right-3 flex items-center gap-1.5">
-          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isStreaming || uploadingFile} className="p-2.5 text-primary hover:text-primary bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] rounded-full transition-all disabled:opacity-30 active:scale-95 flex items-center justify-center cursor-pointer" title="Attach document to this thread">
+        <input ref={inputRef} type="text" value={input} onChange={(e) => setInput(e.target.value)} disabled={isStreaming} placeholder="Query the engine..." className="w-full bg-[var(--bg-surface)]/60 text-primary border border-[var(--border-default)] rounded-full pl-4 md:pl-6 pr-24 md:pr-28 py-3 md:py-4 focus:outline-none focus:border-[var(--accent-blue)]/50 focus:bg-[var(--bg-hover)] transition-all disabled:opacity-50 backdrop-blur-xl shadow-lg text-sm placeholder:text-[var(--text-tertiary)]" />
+        <div className="absolute right-2 md:right-3 flex items-center gap-1 md:gap-1.5">
+          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isStreaming || uploadingFile} className="p-2 md:p-2.5 text-primary hover:text-primary bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] rounded-full transition-all disabled:opacity-30 active:scale-95 flex items-center justify-center cursor-pointer" title="Attach document to this thread">
             <Paperclip size={18} />
           </button>
           {isStreaming ? (

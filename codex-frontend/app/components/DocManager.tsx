@@ -20,8 +20,8 @@ export default function DocManager({ visible, onClose, documents, loadingDocs, u
   const globalDocs = documents.filter(d => !d.thread_id);
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all">
-      <div className="bg-[var(--bg-elevated)] border border-[var(--border-default)] p-8 rounded-2xl shadow-2xl w-full max-w-2xl relative flex flex-col max-h-[85vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-all p-4">
+      <div className="bg-[var(--bg-elevated)] border border-[var(--border-default)] p-4 md:p-8 rounded-2xl shadow-2xl w-full max-w-2xl relative flex flex-col max-h-[85vh]">
         <button onClick={onClose} className="absolute top-4 right-4 text-[var(--text-tertiary)] hover:text-primary transition-colors shrink-0"><X size={20} /></button>
         <h3 className="text-xl font-bold text-primary mb-2 shrink-0">Manage Knowledge Base</h3>
         <p className="text-sm text-[var(--text-secondary)] mb-6 shrink-0">Upload documents or manage currently indexed vector database chunks.</p>

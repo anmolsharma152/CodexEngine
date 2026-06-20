@@ -50,7 +50,7 @@ export default function Sidebar({
   };
 
   return (
-    <aside className={`relative z-10 ${sidebarOpen ? "w-64" : "w-16"} transition-all duration-300 ease-in-out border-r border-[var(--border-default)] bg-[var(--bg-surface)] backdrop-blur-xl flex flex-col overflow-x-hidden`}>
+    <aside className={`fixed md:relative z-30 ${sidebarOpen ? "w-64 translate-x-0" : "w-64 -translate-x-full md:w-16 md:translate-x-0"} transition-all duration-300 ease-in-out border-r border-[var(--border-default)] bg-[var(--bg-surface)] backdrop-blur-xl flex flex-col overflow-x-hidden h-full`}>
       <div className={`h-16 flex items-center border-b border-[var(--border-default)] ${sidebarOpen ? "px-5 justify-between" : "px-0 justify-center"}`}>
         {sidebarOpen ? (
           <>

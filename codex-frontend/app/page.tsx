@@ -49,6 +49,7 @@ export default function Home() {
     threads.setThreadId(crypto.randomUUID());
     setOnboardingSeen(localStorage.getItem("codex_onboarding_seen") === "true");
     setIsMounted(true);
+    if (window.innerWidth < 768) setSidebarOpen(false);
   }, []);
 
   const showOnboarding = !onboardingSeen && threads.threads.length === 0 && chat.messages.length === 0;
@@ -226,6 +227,10 @@ export default function Home() {
         onShowSettings={() => setShowSettings(true)}
         onLogout={auth.logout}
       />
+
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-20 bg-black/60 backdrop-blur-sm md:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
 
       <main className="relative z-10 flex-1 flex flex-col h-full min-w-0">
         <header className="h-16 border-b border-white/5 flex items-center justify-end px-6 bg-black/10 backdrop-blur-sm shrink-0">

@@ -19,10 +19,10 @@ interface MessageBubbleProps {
 export default function MessageBubble({ msg, idx, isStreaming, copiedIndex, onCopy, onCitationClick, onStopThinking }: MessageBubbleProps) {
   return (
     <div className={`flex w-full ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-      <div className={`rounded-2xl p-6 transition-all backdrop-blur-md text-sm md:text-base ${
+      <div className={`rounded-2xl p-4 md:p-6 transition-all backdrop-blur-md text-sm md:text-base ${
         msg.role === "user"
-          ? "bg-[var(--accent-blue-dim)] border border-[var(--accent-blue-dim)] text-primary max-w-[75%]"
-          : "bg-[var(--bg-elevated)]/60 border border-[var(--border-default)] text-[var(--text-secondary)] max-w-[90%]"
+          ? "bg-[var(--accent-blue-dim)] border border-[var(--accent-blue-dim)] text-primary max-w-[85%] md:max-w-[75%]"
+          : "bg-[var(--bg-elevated)]/60 border border-[var(--border-default)] text-[var(--text-secondary)] max-w-full md:max-w-[90%]"
       }`}>
         {msg.role === "assistant" ? (
           msg.content === "" && isStreaming ? (

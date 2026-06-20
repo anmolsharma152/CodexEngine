@@ -1,5 +1,12 @@
 # Deployment
 
+## Branch Strategy
+
+| Branch | Purpose | Deployed |
+|---|---|---|
+| `main` | v4.0 stable — LangGraph pipeline | ✅ Render + Vercel |
+| `agentic` | v5.0 rewrite — custom agent loop with @tool registry | ❌ Under development |
+
 ## Environment Variables
 
 | Service | Config File | Variables |
@@ -17,7 +24,7 @@
 
 ### 2. Backend (Render)
 
-1. Connect your GitHub repo to Render via **Blueprint**
+1. Connect your GitHub repo to Render via **Blueprint** (use `main` branch for v4, `agentic` for v5)
 2. Render reads `render.yaml` — set the env vars in the dashboard or blueprint
 3. Deploy — the service auto-starts at `https://<your-app>.onrender.com`
 4. **Verify**: `curl https://<your-app>.onrender.com/` → `{"status":"ok","app":"CodexEngine V4","version":"4.0"}`

@@ -10,6 +10,15 @@ Most endpoints require a Bearer JWT token obtained from `/login` or `/register`.
 Authorization: Bearer <jwt_token>
 ```
 
+## Rate Limiting
+
+| Endpoint | Limit | Scope |
+|---|---|---|
+| `/register`, `/login` | 10 req/60s | Per IP |
+| `/chat/stream` | 8 req/60s | Per user (JWT) |
+
+All rate-limited endpoints return `429 Too Many Requests` when exceeded.
+
 ## Endpoints
 
 ### Auth
@@ -72,12 +81,15 @@ POST /chat/stream
 Authorization: Bearer <token>
 Content-Type: application/json
 
-{"message": "What is a transformer?", "thread_id": "thread-uuid", "title": "My Chat"}
+{"message": "What is a transformer?", "thread_id": "thread-uuid", "system_prompt": "You are a helpful assistant"}
 
 → SSE stream:
 data: {"type": "status", "content": "Agent routing to router..."}
 data: {"type": "token", "content": "A transformer is..."}
+data: {"type": "evaluation", "content": "...", "intent": "retrieval_required", "context": "..."}
 data: {"type": "done"}
+
+→ 429 Too Many Requests (rate limit exceeded)
 ```
 
 ```
