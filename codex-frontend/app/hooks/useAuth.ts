@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase, API_BASE } from "../lib/constants";
 
 export function useAuth() {
@@ -13,9 +13,13 @@ export function useAuth() {
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
-  useEffect(() => {
-    setToken(localStorage.getItem("codex_auth_token"));
-    setUsername(localStorage.getItem("codex_auth_user"));
+  const refreshingRef = useRef(false);
+
+  const persistToken = useCallback((newToken: string, newUsername: string) => {
+    setToken(newToken);
+    setUsername(newUsername);
+    localStorage.setItem("codex_auth_token", newToken);
+    localStorage.setItem("codex_auth_user", newUsername);
   }, []);
 
   const logout = useCallback(async () => {
@@ -26,6 +30,37 @@ export function useAuth() {
     localStorage.removeItem("codex_auth_user");
     localStorage.removeItem("codex_threads");
   }, []);
+
+  // Listen for automatic token refresh from Supabase
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          if (session) {
+            const meRes = await fetch(`${API_BASE}/user/me`, {
+              headers: { Authorization: `Bearer ${session.access_token}` },
+            });
+            if (meRes.ok) {
+              const meData = await meRes.json();
+              persistToken(session.access_token, meData.username || meData.email);
+            }
+          }
+        } else if (event === "SIGNED_OUT") {
+          logout();
+        }
+      }
+    );
+
+    // Restore token from localStorage on mount
+    const savedToken = localStorage.getItem("codex_auth_token");
+    const savedUsername = localStorage.getItem("codex_auth_user");
+    if (savedToken && savedUsername) {
+      setToken(savedToken);
+      setUsername(savedUsername);
+    }
+
+    return () => subscription.unsubscribe();
+  }, [logout, persistToken]);
 
   const authFetch = useCallback(async (url: string, options: RequestInit = {}) => {
     const headers = new Headers(options.headers || {});
@@ -38,13 +73,30 @@ export function useAuth() {
     } catch {
       return new Response(JSON.stringify({ message: "Network error" }), { status: 502 });
     }
-    if (response.status === 401) {
+
+    if (response.status === 401 && !refreshingRef.current) {
+      refreshingRef.current = true;
+      try {
+        const { data, error } = await supabase.auth.refreshSession();
+        if (!error && data.session) {
+          const newToken = data.session.access_token;
+          persistToken(newToken, username || "");
+          headers.set("Authorization", `Bearer ${newToken}`);
+          response = await fetch(url, { ...options, headers });
+          refreshingRef.current = false;
+          return response;
+        }
+      } catch {
+        // Refresh failed — fall through to logout
+      }
+      refreshingRef.current = false;
       logout();
       setAuthError("Session expired. Please log in again.");
       return new Response(JSON.stringify({ message: "Unauthorized" }), { status: 401 });
     }
+
     return response;
-  }, [token, logout]);
+  }, [token, username, logout, persistToken]);
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,10 +117,7 @@ export function useAuth() {
           headers: { Authorization: `Bearer ${newToken}` },
         });
         const meData = await meRes.json();
-        setToken(newToken);
-        setUsername(meData.username || meData.email);
-        localStorage.setItem("codex_auth_token", newToken);
-        localStorage.setItem("codex_auth_user", meData.username || meData.email);
+        persistToken(newToken, meData.username || meData.email);
         setAuthEmail("");
         setAuthPassword("");
         setAuthRegUsername("");
