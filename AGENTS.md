@@ -123,11 +123,11 @@ LLM Response
 
 ## Branch Strategy
 
-| Branch | Purpose | Deployed |
-|---|---|---|
-| `main` | v4.0 stable — production | ✅ Render + Vercel |
-| `release/v4.0` | Static v4.0 reference | ❌ |
-| `agentic` | THIS BRANCH — v5.0 rewrite | ❌ |
+| Branch | Purpose | Deployed | Merge Rule |
+|---|---|---|---|
+| `main` | v4.0 stable — production | ✅ Render + Vercel | **Protected.** No PR from `agentic` accepted until `release/v4.0` exists and `main` points at it. |
+| `release/v4.0` | Static v4.0 reference — created when `agentic` merges | ❌ | Must exist *before* any `agentic → main` merge. |
+| `agentic` | THIS BRANCH — v5.0 rewrite | ❌ | Merge to `main` **blocked** until v4.0 is moved off `main` to `release/v4.0`. |
 
 ## References (Research)
 

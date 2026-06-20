@@ -2,10 +2,11 @@
 
 ## Branch Strategy
 
-| Branch | Purpose | Deployed |
-|---|---|---|
-| `main` | v4.0 stable — LangGraph pipeline | ✅ Render + Vercel |
-| `agentic` | v5.0 rewrite — custom agent loop with @tool registry | ❌ Under development |
+| Branch | Purpose | Deployed | Merge Rule |
+|---|---|---|---|
+| `main` | v4.0 stable — LangGraph pipeline | ✅ Render + Vercel | **Protected.** No PR from `agentic` accepted until `release/v4.0` exists and `main` points at it. |
+| `release/v4.0` | Static v4.0 reference — created when `agentic` merges | ❌ | Must exist *before* any `agentic → main` merge. |
+| `agentic` | v5.0 rewrite — custom agent loop with @tool registry | ❌ Under development | Merge to `main` **blocked** until v4.0 is moved off `main` to `release/v4.0`. |
 
 ## Environment Variables
 
