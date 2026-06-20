@@ -1,0 +1,35 @@
+export type Message = {
+  role: "user" | "assistant";
+  content: string;
+  intent?: string;
+  evaluation?: {
+    relevant?: boolean;
+    sufficient?: boolean;
+    grounded?: boolean;
+    confidence?: number;
+    retry_needed?: boolean;
+  };
+  context?: string;
+};
+
+export type Thread = {
+  id: string;
+  title: string;
+  timestamp: number;
+  pinned?: boolean;
+};
+
+export type Document = {
+  filename: string;
+  size_bytes: number;
+  chunks_count: number;
+  status: string;
+  thread_id?: string;
+};
+
+export type QuickPrompt = {
+  title: string;
+  desc: string;
+  text: string;
+  docKeywords: string[];
+};
