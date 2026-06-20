@@ -27,6 +27,8 @@ from src.nodes.nodes import (
     retrieve_hybrid_context,
     rewrite_query,
 )
+from src.agent.agent_loop import agent_loop
+from src.agent import tools  # noqa: F401 — ensures tools are registered
 from src.log_utils import logger
 from src.supabase_client import supabase
 from src.db import engine, ensure_schema
@@ -224,6 +226,7 @@ class SaveThreadRequest(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     thread_id: str
+    system_prompt: str | None = None
 
 
 # Endpoints
@@ -321,43 +324,39 @@ async def delete_thread_endpoint(thread_id: str, current_user=Depends(get_curren
 async def chat_stream_endpoint(request: ChatRequest, current_user=Depends(get_current_user)):
     await _check_user_rate_limit(current_user.id)
     verify_thread_ownership(request.thread_id, current_user.id)
-    config = {"configurable": {"thread_id": request.thread_id, "user_id": current_user.id}}
-
-    initial_state = {
-        "user_query": request.message,
-        "search_query": request.message,
-        "messages": [("user", request.message)],
-        "context": "",
-        "critic_score": 0.0,
-        "evaluation": {},
-        "revision_count": 0,
-        "response": "",
-    }
 
     async def event_generator():
         try:
-            async for event in app.state.agent_engine.astream_events(initial_state, config, version="v2"):
-                kind = event["event"]
-                node_name = event.get("name", "unknown node")
-                if kind == "on_chain_start" and node_name in ["router", "condense", "retrieve", "evaluate", "rewrite", "actor"]:
-                    yield f"data: {json.dumps({'type': 'status', 'content': f'Agent routing to {node_name}...'})}\n\n"
-                elif kind == "on_chat_model_stream":
-                    if event.get("metadata", {}).get("langgraph_node") == "actor":
-                        chunk = event["data"]["chunk"].content
-                        if chunk:
-                            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
-
+            history = []
             try:
+                from src.db import engine
+                from sqlalchemy import text as sql_text
+                config = {"configurable": {"thread_id": request.thread_id}}
                 state = await app.state.agent_engine.aget_state(config)
-                evaluation = state.values.get("evaluation", {})
-                intent = state.values.get("intent", "retrieval_required")
-                context = state.values.get("context", "")
-                yield f"data: {json.dumps({'type': 'evaluation', 'content': evaluation, 'intent': intent, 'context': context})}\n\n"
-            except Exception as e:
-                logger.error(f"Failed to yield evaluation metrics: {e}")
+                raw_messages = state.values.get("messages", [])
+                for msg in raw_messages:
+                    if isinstance(msg, tuple):
+                        role, content = msg[0], msg[1]
+                    elif hasattr(msg, "type"):
+                        role = "user" if msg.type == "human" else ("assistant" if msg.type == "ai" else msg.type)
+                        content = msg.content
+                    else:
+                        continue
+                    if role in ["user", "assistant"]:
+                        history.append({"role": role, "content": content})
+            except Exception:
+                pass  # No history available — fresh thread
 
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            async for event_json in agent_loop(
+                user_message=request.message,
+                thread_id=request.thread_id,
+                user_id=current_user.id,
+                messages=history,
+                system_prompt=request.system_prompt,
+            ):
+                yield f"data: {event_json}\n\n"
         except Exception as e:
+            logger.error(f"Agent loop failure: {e}")
             yield f"data: {json.dumps({'type': 'error', 'content': f'Engine failure: {str(e)}'})}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
