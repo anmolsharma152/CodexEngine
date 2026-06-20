@@ -11,9 +11,10 @@ interface ChatAreaProps {
   onCopy: (text: string, idx: number) => void;
   onCitationClick: (href: string, context: string) => void;
   onStopThinking: () => void;
+  onEditMessage?: (idx: number, newContent: string) => void;
 }
 
-export default function ChatArea({ messages, isStreaming, copiedIndex, onCopy, onCitationClick, onStopThinking }: ChatAreaProps) {
+export default function ChatArea({ messages, isStreaming, copiedIndex, onCopy, onCitationClick, onStopThinking, onEditMessage }: ChatAreaProps) {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -33,6 +34,7 @@ export default function ChatArea({ messages, isStreaming, copiedIndex, onCopy, o
             onCopy={onCopy}
             onCitationClick={onCitationClick}
             onStopThinking={onStopThinking}
+            onEdit={onEditMessage}
           />
         ))}
       </div>

@@ -134,6 +134,31 @@ export default function Home() {
   }, [threads, docs, chat]);
 
   const handleSendMessage = useCallback((e: React.FormEvent) => {
+    const cmd = chat.input.trim().toLowerCase();
+    if (cmd === "/clear") {
+      e.preventDefault();
+      chat.setInput("");
+      chat.setMessages([]);
+      return;
+    }
+    if (cmd === "/export") {
+      e.preventDefault();
+      chat.exportChatMarkdown();
+      chat.setInput("");
+      return;
+    }
+    if (cmd === "/settings") {
+      e.preventDefault();
+      setShowSettings(true);
+      chat.setInput("");
+      return;
+    }
+    if (cmd === "/help") {
+      e.preventDefault();
+      chat.setMessages([{ role: "assistant", content: "**Available commands:**\n- `/clear` — Clear conversation\n- `/export` — Export chat as markdown\n- `/settings` — Open settings\n- `/help` — Show this message" }]);
+      chat.setInput("");
+      return;
+    }
     chat.sendMessage(e, threads.threads, threads.saveThreads);
   }, [chat, threads]);
 
@@ -144,6 +169,12 @@ export default function Home() {
   const handleRemoveTemporalFile = useCallback((filename: string) => {
     docs.handleRemoveTemporalFile(filename, threads.threadId);
   }, [docs, threads.threadId]);
+
+  const handleEditMessage = useCallback((idx: number, newContent: string) => {
+    chat.setMessages((prev) =>
+      prev.map((msg, i) => (i === idx ? { ...msg, content: newContent } : msg))
+    );
+  }, []);
 
   useEffect(() => {
     if (auth.token) {
@@ -288,6 +319,7 @@ export default function Home() {
             onCopy={chat.copyToClipboard}
             onCitationClick={handleCitationClick}
             onStopThinking={chat.stopThinking}
+            onEditMessage={handleEditMessage}
           />
         )}
 

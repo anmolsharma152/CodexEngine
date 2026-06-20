@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Copy, Check } from "lucide-react";
+import { Copy, Check, Pencil, X, CheckSquare } from "lucide-react";
 import type { Message } from "../lib/types";
 import CognitionPanel from "./CognitionPanel";
 
@@ -14,9 +15,25 @@ interface MessageBubbleProps {
   onCopy: (text: string, idx: number) => void;
   onCitationClick: (href: string, context: string) => void;
   onStopThinking: () => void;
+  onEdit?: (idx: number, newContent: string) => void;
 }
 
-export default function MessageBubble({ msg, idx, isStreaming, copiedIndex, onCopy, onCitationClick, onStopThinking }: MessageBubbleProps) {
+export default function MessageBubble({ msg, idx, isStreaming, copiedIndex, onCopy, onCitationClick, onStopThinking, onEdit }: MessageBubbleProps) {
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(msg.content);
+
+  const handleSave = () => {
+    if (editText.trim() && onEdit) {
+      onEdit(idx, editText.trim());
+    }
+    setEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditText(msg.content);
+    setEditing(false);
+  };
+
   return (
     <div className={`flex w-full ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
       <div className={`rounded-2xl p-4 md:p-6 transition-all backdrop-blur-md text-sm md:text-base ${
@@ -88,8 +105,38 @@ export default function MessageBubble({ msg, idx, isStreaming, copiedIndex, onCo
               </div>
             </div>
           )
+        ) : editing ? (
+          <div className="flex flex-col gap-2">
+            <textarea
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && e.metaKey) handleSave(); if (e.key === "Escape") handleCancel(); }}
+              className="w-full bg-[var(--bg-inset)] text-primary border border-[var(--accent-blue)]/50 rounded-xl px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-[var(--accent-blue)] resize-none min-h-[60px]"
+              autoFocus
+            />
+            <div className="flex items-center gap-2 justify-end">
+              <button type="button" onClick={handleCancel} className="flex items-center gap-1 px-2.5 py-1 text-xs text-[var(--text-secondary)] hover:text-primary hover:bg-[var(--bg-hover)] rounded-lg transition-colors cursor-pointer">
+                <X size={12} />
+                Cancel
+              </button>
+              <button type="button" onClick={handleSave} className="flex items-center gap-1 px-2.5 py-1 text-xs text-white bg-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/80 rounded-lg transition-colors cursor-pointer">
+                <CheckSquare size={12} />
+                Save
+              </button>
+            </div>
+          </div>
         ) : (
-          <div className="whitespace-pre-wrap leading-relaxed">{msg.content}</div>
+          <div className="group relative">
+            <div className="whitespace-pre-wrap leading-relaxed pr-6">{msg.content}</div>
+            <button
+              type="button"
+              onClick={() => { setEditing(true); setEditText(msg.content); }}
+              className="absolute top-0 right-0 p-1 rounded text-[var(--text-tertiary)] hover:text-primary hover:bg-[var(--bg-hover)] transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+              title="Edit message"
+            >
+              <Pencil size={12} />
+            </button>
+          </div>
         )}
       </div>
     </div>
