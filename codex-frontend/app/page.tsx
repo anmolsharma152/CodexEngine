@@ -7,6 +7,7 @@ import { useThreads } from "./hooks/useThreads";
 import { useDocuments } from "./hooks/useDocuments";
 import { useChat } from "./hooks/useChat";
 import { useSettings } from "./hooks/useSettings";
+import { useProjects } from "./hooks/useProjects";
 import LandingPage from "./components/LandingPage";
 import Sidebar from "./components/Sidebar";
 import ChatArea from "./components/ChatArea";
@@ -30,10 +31,13 @@ export default function Home() {
 
   const settings = useSettings(auth.username);
 
-  const chat = useChat(auth.authFetch, docs.documents, sessionFiles, threads.threadId, settings.systemPrompt);
+  const projects = useProjects();
+
+  const chat = useChat(auth.authFetch, docs.documents, sessionFiles, threads.threadId, settings.systemPrompt, projects.activeProjectId);
 
   const [isMounted, setIsMounted] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [showSettings, setShowSettings] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -105,6 +109,19 @@ export default function Home() {
     }
     return history || [];
   }, [threads, chat]);
+
+  const projectThreads = useMemo(
+    () => threads.threads.filter(t => (t.projectId || "default") === projects.activeProjectId),
+    [threads.threads, projects.activeProjectId]
+  );
+  const projectPinned = useMemo(
+    () => projectThreads.filter(t => t.pinned),
+    [projectThreads]
+  );
+  const projectRecent = useMemo(
+    () => projectThreads.filter(t => !t.pinned).sort((a, b) => b.timestamp - a.timestamp),
+    [projectThreads]
+  );
 
   const handleDeleteThread = useCallback((id: string) => {
     threads.deleteThread(id, threads.threadId, chat.setMessages, chat.setStatus, docs.fetchDocuments);
@@ -208,9 +225,9 @@ export default function Home() {
         setMessages={chat.setMessages}
         setStatus={chat.setStatus}
         inputRef={chat.inputRef}
-        threads={threads.threads}
-        pinnedThreads={threads.pinnedThreads}
-        recentThreads={threads.recentThreads}
+        threads={projectThreads}
+        pinnedThreads={projectPinned}
+        recentThreads={projectRecent}
         editingThreadId={threads.editingThreadId}
         editTitle={threads.editTitle}
         setEditTitle={threads.setEditTitle}
@@ -226,6 +243,14 @@ export default function Home() {
         onShowDocManager={() => docs.setShowDocManager(true)}
         onShowSettings={() => setShowSettings(true)}
         onLogout={auth.logout}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        projects={projects.projects}
+        activeProjectId={projects.activeProjectId}
+        onProjectSelect={projects.setActiveProjectId}
+        onCreateProject={projects.createProject}
+        onRenameProject={projects.renameProject}
+        onDeleteProject={projects.deleteProject}
       />
 
       {sidebarOpen && (

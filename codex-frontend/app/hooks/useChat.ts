@@ -26,6 +26,7 @@ export function useChat(
   sessionFiles: any[],
   threadId: string,
   systemPrompt?: string,
+  projectId?: string,
 ) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -90,7 +91,7 @@ export function useChat(
     const exists = threads.some((t) => t.id === threadId);
     if (!exists) {
       const title = userMessage.length > 28 ? userMessage.slice(0, 25) + "..." : userMessage;
-      const newThread = { id: threadId, title, timestamp: Date.now() };
+      const newThread = { id: threadId, title, timestamp: Date.now(), projectId };
       saveThreads([newThread, ...threads]);
       authFetch(`${API_BASE}/threads`, {
         method: "POST",

@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { Plus, FileUp, Settings, LogOut, BookOpen, Menu, ChevronsLeft, Pin, Trash } from "lucide-react";
-import type { Thread } from "../lib/types";
+import type { Thread, Project } from "../lib/types";
 import ThreadItem from "./ThreadItem";
+import SearchChat from "./SearchChat";
+import ProjectSelector from "./ProjectSelector";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 interface SidebarProps {
@@ -31,6 +34,14 @@ interface SidebarProps {
   onShowDocManager: () => void;
   onShowSettings: () => void;
   onLogout: () => void;
+  searchQuery: string;
+  onSearchChange: (q: string) => void;
+  projects: Project[];
+  activeProjectId: string;
+  onProjectSelect: (id: string) => void;
+  onCreateProject: (name: string) => void;
+  onRenameProject: (id: string, name: string) => void;
+  onDeleteProject: (id: string) => void;
 }
 
 export default function Sidebar({
@@ -41,6 +52,8 @@ export default function Sidebar({
   username, displayName,
   onSelectThread, onTogglePin, onStartRename, onSaveRename, onDeleteThread,
   onClearAllThreads, onShowDocManager, onShowSettings, onLogout,
+  searchQuery, onSearchChange,
+  projects, activeProjectId, onProjectSelect, onCreateProject, onRenameProject, onDeleteProject,
 }: SidebarProps) {
   const newChat = () => {
     setThreadId(crypto.randomUUID());
@@ -48,6 +61,14 @@ export default function Sidebar({
     setStatus("System Standby");
     setTimeout(() => inputRef.current?.focus(), 50);
   };
+
+  const filteredRecent = recentThreads.filter((t) =>
+    t.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  const filteredPinned = pinnedThreads.filter((t) =>
+    t.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  const hasResults = filteredPinned.length > 0 || filteredRecent.length > 0;
 
   return (
     <aside className={`fixed md:relative z-30 ${sidebarOpen ? "w-64 translate-x-0" : "w-64 -translate-x-full md:w-16 md:translate-x-0"} transition-all duration-300 ease-in-out border-r border-[var(--border-default)] bg-[var(--bg-surface)] backdrop-blur-xl flex flex-col overflow-x-hidden h-full`}>
@@ -65,6 +86,20 @@ export default function Sidebar({
         )}
       </div>
 
+      {sidebarOpen && (
+        <div className="px-4 pt-3 pb-2 space-y-2 border-b border-[var(--border-default)]">
+          <ProjectSelector
+            projects={projects}
+            activeProjectId={activeProjectId}
+            onSelect={onProjectSelect}
+            onCreate={onCreateProject}
+            onRename={onRenameProject}
+            onDelete={onDeleteProject}
+          />
+          <SearchChat query={searchQuery} onChange={onSearchChange} />
+        </div>
+      )}
+
       <div className={`flex justify-center ${sidebarOpen ? "p-4" : "py-4 px-0"}`}>
         <button onClick={newChat} title="New Chat" className={`flex items-center justify-center bg-[var(--bg-elevated)] hover:bg-[var(--bg-hover)] text-primary transition-all text-sm font-medium ${sidebarOpen ? "w-full gap-2 px-4 py-2.5 rounded-lg" : "w-10 h-10 p-0 rounded-lg"}`}>
           <Plus size={16} className="shrink-0" />
@@ -73,28 +108,30 @@ export default function Sidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden space-y-4 pb-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[var(--border-default)] hover:[&::-webkit-scrollbar-thumb]:bg-[var(--border-hover)] [&::-webkit-scrollbar-thumb]:rounded-full">
-        {sidebarOpen && threads.length > 0 && (
+        {sidebarOpen && threads.length > 0 && !searchQuery && (
           <div className="flex items-center justify-end px-6 mt-3 mb-1">
             <button onClick={onClearAllThreads} title="Clear all chat history" className="p-1 rounded text-[var(--text-tertiary)] hover:text-red-400 hover:bg-[var(--bg-hover)] transition-all cursor-pointer">
               <Trash size={12} />
             </button>
           </div>
         )}
-        {threads.length === 0 ? (
-          sidebarOpen && <div className="text-center py-8 text-xs text-[var(--text-tertiary)]">No chat history</div>
+        {sidebarOpen && !hasResults ? (
+          <div className="text-center py-8 text-xs text-[var(--text-tertiary)]">
+            {searchQuery ? "No chats match your search" : "No chat history"}
+          </div>
         ) : (
           <>
-            {pinnedThreads.length > 0 && (
+            {filteredPinned.length > 0 && (
               <div>
                 {sidebarOpen && <div className="text-xs text-[var(--text-tertiary)] mb-1.5 px-6 whitespace-nowrap mt-3 flex items-center gap-1.5"><Pin size={10} className="rotate-45 text-blue-400 fill-blue-400" /> Pinned</div>}
-                {pinnedThreads.map((t) => (
+                {filteredPinned.map((t) => (
                   <ThreadItem key={t.id} t={t} isActive={threadId === t.id} isEditing={editingThreadId === t.id} editTitle={editTitle} sidebarOpen={sidebarOpen} onSelect={onSelectThread} onTogglePin={onTogglePin} onStartRename={onStartRename} onSaveRename={onSaveRename} onDelete={onDeleteThread} setEditTitle={setEditTitle} setEditingThreadId={setEditingThreadId} />
                 ))}
               </div>
             )}
             <div>
-              {sidebarOpen && <div className="text-xs text-[var(--text-tertiary)] mb-1.5 px-6 whitespace-nowrap mt-3">Recent</div>}
-              {recentThreads.map((t) => (
+              {sidebarOpen && filteredRecent.length > 0 && <div className="text-xs text-[var(--text-tertiary)] mb-1.5 px-6 whitespace-nowrap mt-3">Recent</div>}
+              {filteredRecent.map((t) => (
                 <ThreadItem key={t.id} t={t} isActive={threadId === t.id} isEditing={editingThreadId === t.id} editTitle={editTitle} sidebarOpen={sidebarOpen} onSelect={onSelectThread} onTogglePin={onTogglePin} onStartRename={onStartRename} onSaveRename={onSaveRename} onDelete={onDeleteThread} setEditTitle={setEditTitle} setEditingThreadId={setEditingThreadId} />
               ))}
             </div>

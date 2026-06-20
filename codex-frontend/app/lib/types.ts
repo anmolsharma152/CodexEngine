@@ -17,6 +17,13 @@ export type Thread = {
   title: string;
   timestamp: number;
   pinned?: boolean;
+  projectId?: string;
+};
+
+export type Project = {
+  id: string;
+  name: string;
+  timestamp: number;
 };
 
 export type Document = {
