@@ -26,35 +26,30 @@ from src.agent.tool_registry import get_registry
 from src.log_utils import logger
 
 MAX_ITERATIONS = 10
-GENERATION_MODEL = "llama-3.3-70b-versatile"
 
-BASE_SYSTEM_PROMPT = """You are CodexEngine, an elite AI knowledge agent.
+BASE_SYSTEM_PROMPT = """You are CodexEngine, a document Q&A agent.
 
-You have access to tools that help you answer the user's question. Use them as needed:
+You have access to tools. Use them as needed:
 
-1. **analyze_intent(query)** — Classify a query as `direct_casual`, `direct_parametric`, or `retrieval_required`.
-   - Call this first to decide your strategy.
-   - `direct_casual`: greeting/small-talk — answer warmly without tools.
-   - `direct_parametric`: general knowledge you know internally — prefix with "[Source: Internal AI Knowledge]".
+1. **analyze_intent(query)** — Classify a query as:
+   - `direct_casual`: greeting/small-talk — answer warmly, no tools.
+   - `direct_parametric`: general knowledge you know — prefix with "[Source: Internal AI Knowledge]".
    - `retrieval_required`: needs document search — use vector_search/web_search.
 
-2. **vector_search(query, thread_id, user_id)** — Search documents via vector similarity + BM25.
+2. **vector_search(query, thread_id, user_id)** — Search user documents via vector similarity + BM25.
 
 3. **web_search(query)** — Search the web for current info.
 
 4. **evaluate_retrieval(query, context, revision_count)** — Check if retrieved context is sufficient.
 
-5. **rewrite_query(query, context)** — Improve a search query that yielded poor results.
+5. **rewrite_query(query, context)** — Rewrite a search query that got poor results.
 
-CRITICAL FORMATTING RULES FOR YOUR FINAL ANSWER:
-1. Short paragraphs (2-3 sentences max). Use bullet lists extensively.
-2. Blank lines between paragraphs and list items.
-3. No speaker labels — begin your response immediately.
-4. If you used retrieved context, attach citations like `[p. 5]`, `[doc]`, `[web]` after sentences. Do not invent citations.
-5. If you used ZERO facts from retrieved context, append "[Source: Internal AI Knowledge]" at the end.
-6. Only use the `analyze_intent`, `vector_search`, `web_search`, `evaluate_retrieval`, and `rewrite_query` tools — do NOT call any other functions.
-7. You may call multiple tools in a single step when they are independent (e.g., `vector_search` + `web_search` simultaneously).
-"""
+RULES:
+- Short paragraphs, bullet lists, blank lines between blocks.
+- Cite sources: `[p. 5]`, `[doc]`, `[web]` after relevant sentences.
+- If you used NO retrieved context, append "[Source: Internal AI Knowledge]" at the end.
+- No speaker labels — start your response directly.
+- Call independent tools simultaneously."""
 
 
 async def agent_loop(
@@ -77,7 +72,7 @@ async def agent_loop(
     - 'error': unrecoverable error
     """
     registry = get_registry()
-    llm = get_chat_model(model=GENERATION_MODEL, temperature=0.3, max_retries=3)
+    llm = get_chat_model(temperature=0.3, max_retries=3)
 
     # Build message list
     lc_messages = []
@@ -156,7 +151,7 @@ async def agent_loop(
 
     # Max iterations exceeded — force final response
     yield json.dumps({"type": "status", "content": "Reached maximum iterations, generating final answer..."})
-    llm_no_tools = get_chat_model(model=GENERATION_MODEL, temperature=0.3, max_retries=3)
+    llm_no_tools = get_chat_model(temperature=0.3, max_retries=3)
     force_response = await llm_no_tools.ainvoke(
         lc_messages + [SystemMessage(content="You have reached the maximum number of tool calls. Provide your best final answer now using everything you have learned.")]
     )
