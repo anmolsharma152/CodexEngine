@@ -35,10 +35,15 @@ import src.storage_client as storage_client
 load_dotenv()
 DB_URL = os.environ["DB_URL"]
 
-# Simple in-memory IP-based rate limiter
+# In-memory IP-based rate limiter (auth endpoints)
 _rate_limit_store: dict[str, list[float]] = defaultdict(list)
-_RATE_LIMIT_WINDOW = 60  # seconds
-_RATE_LIMIT_MAX = 10  # requests per window
+_RATE_LIMIT_WINDOW = 60
+_RATE_LIMIT_MAX = 10
+
+# Per-user rate limiter (LLM endpoints — Groq free tier 30 RPM)
+_user_rate_limit_store: dict[str, list[float]] = defaultdict(list)
+_USER_RATE_LIMIT_WINDOW = 60
+_USER_RATE_LIMIT_MAX = 8  # 8 chat requests/min per user (each triggers ~3-6 LLM calls)
 
 
 async def _check_rate_limit(request: Request):
@@ -48,6 +53,15 @@ async def _check_rate_limit(request: Request):
     timestamps[:] = [t for t in timestamps if now - t < _RATE_LIMIT_WINDOW]
     if len(timestamps) >= _RATE_LIMIT_MAX:
         raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+    timestamps.append(now)
+
+
+async def _check_user_rate_limit(user_id: str):
+    now = time.time()
+    timestamps = _user_rate_limit_store[user_id]
+    timestamps[:] = [t for t in timestamps if now - t < _USER_RATE_LIMIT_WINDOW]
+    if len(timestamps) >= _USER_RATE_LIMIT_MAX:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Please wait before sending another message.")
     timestamps.append(now)
 
 ensure_schema()
@@ -305,6 +319,7 @@ async def delete_thread_endpoint(thread_id: str, current_user=Depends(get_curren
 
 @app.post("/chat/stream")
 async def chat_stream_endpoint(request: ChatRequest, current_user=Depends(get_current_user)):
+    await _check_user_rate_limit(current_user.id)
     verify_thread_ownership(request.thread_id, current_user.id)
     config = {"configurable": {"thread_id": request.thread_id, "user_id": current_user.id}}
 
