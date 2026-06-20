@@ -36,24 +36,62 @@ The loop is **not prescribed** — the tool registry and LLM steering determine 
 
 ## Tool Registry
 
+### Current (v5.0 MVP)
+
+| Tool | Description | Source |
+|---|---|---|
+| `analyze_intent` | Classify query as direct_casual / direct_parametric / retrieval_required | Migrated from LangGraph router |
+| `vector_search` | Hybrid vector + BM25 document search with reranking | Migrated from LangGraph retriever |
+| `web_search` | DuckDuckGo fallback for external info | Migrated from LangGraph retriever |
+| `evaluate_retrieval` | Check if retrieved context is sufficient to answer | Migrated from LangGraph evaluator |
+| `rewrite_query` | Improve search query that yielded poor results | Migrated from LangGraph rewriter |
+
+### Planned (v5.x)
+
 | Phase | Tools |
 |---|---|
-| **v5.0 Core** | `vector_search`, `keyword_search`, `web_search`, `read_document`, `list_documents` |
-| **v5.1 Write** | `write_document`, `edit_document`, `create_file` |
-| **v5.2 Comms** | `compose_email`, `summarize`, `compare_documents` |
-| **Future** | MCP adapter (discover external tools dynamically) |
+| **Doc tools** | `read_document`, `list_documents`, `keyword_search` |
+| **Write tools** | `write_document`, `edit_document`, `create_file` |
+| **Comms** | `compose_email`, `summarize`, `compare_documents` |
+| **MCP adapter** | Discover external tools dynamically (Notion, Google Docs, Confluence) |
 
 ## Key Design Decisions
 
-| Decision | Rationale | Source |
+| Decision | Rationale |
+|---|---|
+| **Custom loop, not LangGraph** | ~170 lines, no framework lock-in, direct SSE control |
+| **@tool decorators with typed schemas** | Auto-generate tool definitions from function signatures |
+| **Multi-tool, not mono-tool** | Knowledge workspace needs discrete semantic tools, not terminal access |
+| **Python-only for v5.0** | Rust/TS for perf-critical subsystems later |
+| **Parallel tool execution** | Default concurrent execution for independent tools (pi pattern); sequential fallback for dependent tools |
+| **No ATIF trajectory format** | Overkill for MVP — simple SSE JSON events suffice for frontend progress display |
+| **No permission scoping** | Single-user app — every tool is available to the agent |
+| **No steering/follow-up queues** | Not needed for doc Q&A; can add if conversational needs grow |
+
+## What We Adopted (and Skipped) from References
+
+| Reference | Adopted | Skipped |
 |---|---|---|
-| **Custom loop, not LangGraph** | ~150 lines, no framework lock-in, direct SSE control | Pi, opencode, Codex CLI |
-| **@tool decorators with typed schemas** | Auto-generate tool definitions from function signatures | opencode tool registry |
-| **SSE streaming with tool events** | Emit tool start/result tokens so UI shows progress | Current SSE pattern |
-| **Proactive summarization** | 3-step (summary → questions → answers) before context limit | Terminus-2 |
-| **Multi-tool, not mono-tool** | Document Q&A needs discrete semantic tools, not terminal | Domain fit |
-| **Flexible orchestration** | Support both single-loop and subagent patterns; not hardcoded | opencode, Codex CLI, Pi |
-| **Python-only for v5.0** | Rust/TS for perf-critical subsystems later | Phased expansion |
+| **opencode** | `@tool` decorator pattern, ToolRegistry singleton | No Effect-TS (overkill for Python), no permission filtering (single-user), no FiberSet (Python asyncio.gather is simpler) |
+| **pi** | Two-level loop concept, parallel tool execution default, event-system via SSE | No steering queues (not needed for doc Q&A), no lifecycle hooks (add later if needed), no AgentHarness (would be one more layer of abstraction) |
+| **Terminus-2** | 3-step summarization (future), subagent spawning pattern (future) | No ATIF trajectory (overkill), no mono-tool restriction, no double-completion protocol (not building a terminal agent) |
+| **Codex CLI** | Sandbox-isolated tool execution (future), session-based persistence (future) | No bash execution (we're not a coding agent) |
+
+## Implementation Status
+
+```
+✅ 1. Core agent loop — agent_loop.py with LLM → tool → loop pattern
+✅ 2. Migrate existing RAG nodes as @tool functions (5 tools)
+⬜ 3. Token-level SSE streaming — yield chunks, not full responses
+⬜ 4. Parallel tool execution — gather independent tools concurrently
+⬜ 5. Document tools — read_document, list_documents, keyword_search
+⬜ 6. chat_messages table — replace LangGraph checkpointer persistence
+⬜ 7. Async DB — create_async_engine → asyncpg
+⬜ 8. Context management — proactive summarization (Terminus-2 3-step)
+⬜ 9. Write tools — write_document, edit_document, create_file
+⬜ 10. Subagent spawning — for parallel document exploration
+⬜ 11. MCP adapter — Notion, Google Docs, Confluence integrations
+```
 
 ## Execution Model
 
@@ -69,19 +107,6 @@ LLM Response
 - **Direct response**: LLM produces a final answer. Streamed to user. Session ends.
 - **Subagent**: LLM delegates a subtask to a child agent (with narrowed tools/context). Child result is merged back.
 
-Subagent spawning is optional — start with single-loop, add subagents when parallel exploration is needed.
-
-## Implementation Order
-
-1. Core agent loop — `agent_loop.py` with LLM → tool → loop pattern
-2. Migrate existing RAG nodes as `@tool` functions
-3. SSE streaming — emit tool events to frontend
-4. Context management — proactive summarization
-5. Write tools — `write_document`, `edit_document`
-6. Subagent spawning (optional) — for parallel subtasks
-7. MCP adapter — dynamic tool discovery
-8. Language expansion — Rust/TS for perf-critical subsystems
-
 ## What Stays from v4.0
 
 - Supabase auth + storage + DB
@@ -92,9 +117,9 @@ Subagent spawning is optional — start with single-loop, add subagents when par
 
 ## What Gets Replaced
 
-- LangGraph `StateGraph` → custom agent loop (flexible: single-loop or subagent)
-- Fixed pipeline nodes → dynamic tool selection via `@tool` decorators
-- LangGraph checkpointing → custom message persistence via `chat_messages` table
+- LangGraph `StateGraph` → custom agent loop (flexible: single-loop or subagent) — **DONE**
+- Fixed pipeline nodes → dynamic tool selection via `@tool` decorators — **DONE**
+- LangGraph checkpointing → custom message persistence via `chat_messages` table — **TODO**
 
 ## Branch Strategy
 

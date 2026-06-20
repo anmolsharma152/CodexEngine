@@ -2,7 +2,10 @@
 
 Upload documents, ask questions, get answers backed by your own knowledge base.
 
-A personalized AI research assistant — you feed it PDFs, it indexes them, and you chat with your documents using a multi-agent RAG pipeline. Think NotebookLM, but self-hosted and developer-friendly.
+A personalized AI research assistant — you feed it PDFs, it indexes them, and you chat with your documents. Think NotebookLM, but self-hosted and developer-friendly.
+
+> **v4.0** is stable on `main` (LangGraph pipeline, deployed Render + Vercel).  
+> **v5.0** is in progress on `agentic` (custom agent loop, tool-based architecture).
 
 ## Quick Start
 
@@ -26,14 +29,14 @@ Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_AP
 
 ## How It Works
 
-When you ask a question, CodexEngine:
+When you ask a question, CodexEngine runs a **flexible agent loop** — the LLM decides dynamically which tools to call and in what order:
 
-1. Decides if it needs to search your documents or can answer directly
-2. Searches your indexed content using vector similarity + keyword search + optional web fallback
-3. Scores and reranks the results
-4. Generates an answer with source citations (`[p. X]`, `[r. X]`, `[doc]`, `[web]`)
+1. **Analyze intent** — Classifies whether the query needs document search, general knowledge, or casual response
+2. **Search** — Hybrid vector + BM25 search across your indexed documents, with optional web fallback
+3. **Evaluate** — Checks if retrieved context is sufficient; rewrites query and retries if not (up to 3 retries)
+4. **Generate** — Produces a final answer with source citations (`[p. X]`, `[r. X]`, `[doc]`, `[web]`)
 
-All of this runs through a LangGraph agent pipeline with self-evaluation loops (up to 3 retries if the initial answer is weak).
+All of this runs through a custom while-true agent loop (replaced the old LangGraph pipeline). The LLM has access to 5 tool functions and decides per-turn whether to call a tool or respond directly.
 
 ### Running Modes
 
@@ -54,7 +57,7 @@ flowchart TD
     subgraph Frontend [codex-frontend — Next.js 15]
         AuthUI[Auth UI]
         ChatUI[Chat UI / SSE]
-        DocMgr[Document Manager]
+        Comp[Sidebar, Search, Projects,<br>DocManager, Settings]
         SupaSDK["@supabase/supabase-js<br>Auth JWT → Bearer"]
     end
 
@@ -65,19 +68,18 @@ flowchart TD
 
     subgraph Backend [codex-backend — FastAPI]
         direction LR
-        R[1. Router] --> C[2. Condenser] --> Ret[3. Retriever]
-        Ret --> E[4. Evaluator]
-        E -->|loop ≤3x| RW[5. Rewriter]
-        RW --> Ret
-        E --> A[6. Actor]
-        A --> Resp[SSE Response]
+        AL[Agent Loop<br>while-true LLM→tool→loop]
 
-        subgraph Retrieval [Hybrid Retrieval]
-            VEC[Vector Search]
-            BM[BM25 Keyword]
-            WEB[DuckDuckGo<br>Web Fallback]
-            Fuse[Fusion + Rerank]
+        subgraph Tools [@tool Registry]
+            AI[analyze_intent]
+            VS[vector_search]
+            WS[web_search]
+            ER[evaluate_retrieval]
+            RQ[rewrite_query]
         end
+
+        Rate[Rate Limiter<br>8 req/min per user]
+        Ing[File Ingestion]
     end
 
     subgraph DB [PostgreSQL + pgvector]
@@ -86,7 +88,7 @@ flowchart TD
     end
 
     subgraph External [External APIs]
-        Groq[Groq<br>LLM — llama-3.1]
+        Groq[Groq<br>LLM — llama-3.1 / 3.3]
         Gemini[Google Gemini<br>embeddings]
         FastEmbed[fastembed ONNX<br>embeddings]
     end
@@ -96,20 +98,33 @@ flowchart TD
     SA -.->|JWT session| SupaSDK
     SupaSDK --> Backend
     ChatUI <-->|SSE stream| Backend
-    DocMgr <-->|upload / list / delete| Backend
+    Comp <-->|REST| Backend
+
+    Rate --> AL
+    AL --> AI & VS & WS & ER & RQ
+    VS --> Chunks
+    WS --> DuckDuckGo
 
     Backend --> SB
     Backend --> DB
-    Ret --> VEC
-    Ret --> BM
-    Ret --> WEB
-    VEC & BM & WEB --> Fuse
-    Fuse --> Ret
+    Backend --> Groq
 
-    VEC ---> FastEmbed
-    VEC -.->|fallback| Gemini
-    Backend ---> Groq
+    VS ---> FastEmbed
+    VS -.->|fallback| Gemini
 ```
+
+## v5.0 Changes (agentic branch)
+
+| Before (v4.0) | After (v5.0) |
+|---|---|
+| LangGraph StateGraph with hardcoded DAG | Custom while-true agent loop |
+| 6 fixed pipeline nodes | 5 @tool functions, LLM decides flow |
+| Monolith page.tsx (2000+ lines) | 20+ decomposed components |
+| CSS in-page with tailwind classes | shadcn/ui v4 with dark design system |
+| No per-user rate limiting | 8 req/min per user on /chat/stream |
+| No message editing | Slash commands + edit button |
+| No projects or search | ProjectSelector + SearchChat |
+| Desktop-only sidebar | Mobile-responsive overlay |
 
 ## Testing
 
@@ -125,3 +140,4 @@ python eval/ragas_eval.py         # RAGAS metrics
 
 - [Deployment guide](docs/deployment.md) — Render, Vercel, Supabase setup
 - [API reference](docs/api.md) — endpoint table with request/response examples
+- [Agent architecture](AGENTS.md) — agent loop design, tool registry, reference research
