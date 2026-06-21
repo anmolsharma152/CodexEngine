@@ -35,10 +35,14 @@ This means your work persists beyond this conversation. You can build on previou
 Use search_documents and search_web as needed for research before writing."""
 
 
+_WORKSPACE_TOOLS = {"read_document", "write_document", "list_documents"}
+
+
 async def agent_loop(
     user_message: str,
     thread_id: str,
     user_id: str,
+    project_id: str = "default",
     messages: list | None = None,
     system_prompt: str | None = None,
     provider: str = "groq",
@@ -69,6 +73,9 @@ async def agent_loop(
                     args = json.loads(tc.arguments)
                 except json.JSONDecodeError:
                     args = {}
+
+                if tc.name in _WORKSPACE_TOOLS and "project_id" not in args:
+                    args["project_id"] = project_id
 
                 yield json.dumps({"type": "tool_call", "content": {"name": tc.name, "args": args}})
 
