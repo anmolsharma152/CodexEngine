@@ -39,6 +39,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Run upload pipeline unit tests
+        working-directory: codex-backend
+        run: python -m unittest tests/test_upload_pipeline.py
+        env:
+          SUPABASE_URL: https://dummy-project.supabase.co
+          SUPABASE_ANON_KEY: dummy-anon-key
+          GROQ_API_KEY: dummy-key
+          DB_URL: postgresql+asyncpg://u:p@localhost/db
+
       - name: Seed database schema
         working-directory: codex-backend
         run: |
