@@ -1,4 +1,5 @@
 import os
+import urllib.parse
 
 import httpx
 from dotenv import load_dotenv
@@ -24,8 +25,12 @@ def _auth_headers(auth_token: str | None = None) -> dict:
     }
 
 
+def _encode_path(path: str) -> str:
+    return urllib.parse.quote(path, safe="/")
+
+
 async def upload_file(bucket: str, path: str, data: bytes, content_type: str | None = None, auth_token: str | None = None) -> None:
-    url = f"{_SUPABASE_URL}/storage/v1/object/{bucket}/{path}"
+    url = f"{_SUPABASE_URL}/storage/v1/object/{bucket}/{_encode_path(path)}"
     headers = _auth_headers(auth_token)
     headers["Content-Type"] = content_type or "application/octet-stream"
     headers["x-upsert"] = "true"
@@ -34,18 +39,24 @@ async def upload_file(bucket: str, path: str, data: bytes, content_type: str | N
             resp = await client.post(url, headers=headers, content=data)
             resp.raise_for_status()
             logger.info(f"Uploaded to storage: {bucket}/{path}")
+        except httpx.HTTPStatusError:
+            logger.error(f"Storage upload failed for {bucket}/{path}: status={resp.status_code} body={resp.text}")
+            raise
         except Exception as e:
             logger.error(f"Storage upload failed for {bucket}/{path}: {e}")
             raise
 
 
 async def download_file(bucket: str, path: str, auth_token: str | None = None) -> bytes:
-    url = f"{_SUPABASE_URL}/storage/v1/object/{bucket}/{path}"
+    url = f"{_SUPABASE_URL}/storage/v1/object/{bucket}/{_encode_path(path)}"
     async with httpx.AsyncClient(timeout=30) as client:
         try:
             resp = await client.get(url, headers=_auth_headers(auth_token))
             resp.raise_for_status()
             return resp.content
+        except httpx.HTTPStatusError:
+            logger.error(f"Storage download failed for {bucket}/{path}: status={resp.status_code} body={resp.text}")
+            raise
         except Exception as e:
             logger.error(f"Storage download failed for {bucket}/{path}: {e}")
             raise
@@ -58,9 +69,12 @@ async def list_files(bucket: str, prefix: str, auth_token: str | None = None) ->
             resp = await client.post(url, headers=_auth_headers(auth_token), json={"prefix": prefix, "limit": 100, "offset": 0})
             resp.raise_for_status()
             return resp.json()
+        except httpx.HTTPStatusError:
+            logger.error(f"Storage list failed for {bucket}/{prefix}: status={resp.status_code} body={resp.text}")
+            raise
         except Exception as e:
             logger.error(f"Storage list failed for {bucket}/{prefix}: {e}")
-            return []
+            raise
 
 
 async def remove_files(bucket: str, paths: list[str], auth_token: str | None = None) -> None:
@@ -69,8 +83,12 @@ async def remove_files(bucket: str, paths: list[str], auth_token: str | None = N
         try:
             resp = await client.post(url, headers=_auth_headers(auth_token), json={"prefixes": paths})
             resp.raise_for_status()
+        except httpx.HTTPStatusError:
+            logger.error(f"Storage remove failed for {bucket}/{paths}: status={resp.status_code} body={resp.text}")
+            raise
         except Exception as e:
             logger.error(f"Storage remove failed for {bucket}/{paths}: {e}")
+            raise
 
 
 async def ensure_bucket(bucket: str) -> None:
