@@ -62,4 +62,17 @@ def ensure_schema():
             );
         """))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_chat_messages_thread ON chat_messages (thread_id, user_id, created_at);"))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS workspace_artifacts (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                project_id VARCHAR(255) NOT NULL,
+                path VARCHAR(1024) NOT NULL,
+                content TEXT NOT NULL,
+                artifact_type VARCHAR(50) DEFAULT 'document',
+                created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+                updated_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+                UNIQUE(project_id, path)
+            );
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_workspace_artifacts_project ON workspace_artifacts (project_id, path);"))
         conn.commit()
