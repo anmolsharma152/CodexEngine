@@ -40,11 +40,10 @@ The loop is **not prescribed** — the tool registry and LLM steering determine 
 
 | Tool | Description | Source |
 |---|---|---|
-| `analyze_intent` | Classify query as direct_casual / direct_parametric / retrieval_required | Migrated from LangGraph router |
-| `vector_search` | Hybrid vector + BM25 document search with reranking | Migrated from LangGraph retriever |
-| `web_search` | DuckDuckGo fallback for external info | Migrated from LangGraph retriever |
-| `evaluate_retrieval` | Check if retrieved context is sufficient to answer | Migrated from LangGraph evaluator |
-| `rewrite_query` | Improve search query that yielded poor results | Migrated from LangGraph rewriter |
+| `search_documents` | Hybrid vector + BM25 document search with reranking | Migrated from LangGraph retriever |
+| `search_web` | DuckDuckGo fallback for external info | Migrated from LangGraph retriever |
+
+The LLM handles intent classification, evaluation, and query rewriting as direct reasoning — no separate tool calls needed for those.
 
 ### Planned (v5.x)
 
@@ -64,6 +63,7 @@ The loop is **not prescribed** — the tool registry and LLM steering determine 
 | **Multi-tool, not mono-tool** | Knowledge workspace needs discrete semantic tools, not terminal access |
 | **Python-only for v5.0** | Rust/TS for perf-critical subsystems later |
 | **Parallel tool execution** | Default concurrent execution for independent tools (pi pattern); sequential fallback for dependent tools |
+| **LLM does reasoning, tools do actions** | Intent classification, evaluation, query rewriting = LLM reasoning. Tools = external capabilities (search docs, search web). No redundant "LLM calling LLM" |
 | **No ATIF trajectory format** | Overkill for MVP — simple SSE JSON events suffice for frontend progress display |
 | **No permission scoping** | Single-user app — every tool is available to the agent |
 | **No steering/follow-up queues** | Not needed for doc Q&A; can add if conversational needs grow |
@@ -81,9 +81,10 @@ The loop is **not prescribed** — the tool registry and LLM steering determine 
 
 ```
 ✅ 1. Core agent loop — agent_loop.py with LLM → tool → loop pattern
-✅ 2. Migrate existing RAG nodes as @tool functions (5 tools)
-⬜ 3. Token-level SSE streaming — yield chunks, not full responses
-⬜ 4. Parallel tool execution — gather independent tools concurrently
+✅ 2. Tool registry — @tool decorator with auto-generated JSON schema
+✅ 3. Search tools — search_documents (vector+BM25) and search_web (DDGS)
+   (Removed: analyze_intent, evaluate_retrieval, rewrite_query — LLM does these directly)
+⬜ 4. Token-level SSE streaming — yield chunks, not full responses
 ⬜ 5. Document tools — read_document, list_documents, keyword_search
 ⬜ 6. chat_messages table — replace LangGraph checkpointer persistence
 ⬜ 7. Async DB — create_async_engine → asyncpg

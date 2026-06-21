@@ -1,15 +1,6 @@
 export type Message = {
   role: "user" | "assistant";
   content: string;
-  intent?: string;
-  evaluation?: {
-    relevant?: boolean;
-    sufficient?: boolean;
-    grounded?: boolean;
-    confidence?: number;
-    retry_needed?: boolean;
-  };
-  context?: string;
 };
 
 export type Thread = {

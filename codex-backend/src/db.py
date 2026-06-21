@@ -1,5 +1,6 @@
 import os
 from sqlalchemy import create_engine, text
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncConnection
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -8,7 +9,13 @@ DB_URL = os.environ.get("DB_URL")
 if not DB_URL:
     raise RuntimeError("DB_URL environment variable is not set")
 
+# Sync engine for scripts (ingestion runs in threads)
 engine = create_engine(DB_URL)
+
+# Async engine for server/agent — convert psycopg:// → asyncpg://
+_async_url = DB_URL.replace("postgresql+psycopg://", "postgresql+asyncpg://")
+_async_url = _async_url.replace("postgresql://", "postgresql+asyncpg://")
+async_engine = create_async_engine(_async_url)
 
 
 def ensure_schema():
@@ -44,4 +51,15 @@ def ensure_schema():
         """))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_prose_chunks_metadata ON prose_chunks USING GIN (metadata);"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_threads_user_id ON threads (user_id);"))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id BIGSERIAL PRIMARY KEY,
+                thread_id VARCHAR(255) NOT NULL,
+                user_id UUID NOT NULL,
+                role VARCHAR(50) NOT NULL,
+                content TEXT,
+                created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+            );
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_chat_messages_thread ON chat_messages (thread_id, user_id, created_at);"))
         conn.commit()

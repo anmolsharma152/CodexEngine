@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Copy, Check, Pencil, X, CheckSquare } from "lucide-react";
 import type { Message } from "../lib/types";
-import CognitionPanel from "./CognitionPanel";
+
 
 interface MessageBubbleProps {
   msg: Message;
@@ -59,9 +59,6 @@ export default function MessageBubble({ msg, idx, isStreaming, copiedIndex, onCo
             </div>
           ) : (
             <div className="flex flex-col">
-              {(msg.intent || msg.evaluation) && (
-                <CognitionPanel intent={msg.intent} evaluation={msg.evaluation} />
-              )}
               <div className="prose prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-[var(--bg-surface)]/80 prose-pre:border prose-pre:border-[var(--border-default)] prose-pre:rounded-xl prose-code:text-[var(--accent-blue)]">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
@@ -77,7 +74,7 @@ export default function MessageBubble({ msg, idx, isStreaming, copiedIndex, onCo
                           const row = url.searchParams.get("row") || "";
                           const label = page ? `p. ${page}` : (row ? `r. ${row}` : "doc");
                           return (
-                            <button type="button" onClick={() => onCitationClick(href, msg.context || "")} title={`${source} ${page ? `p. ${page}` : row ? `r. ${row}` : "doc"}`} className="inline-flex items-center justify-center px-1 py-0.5 mx-0.5 rounded text-2xs font-mono font-bold bg-[var(--accent-blue-dim)] hover:bg-[var(--accent-blue-dim)]/80 text-[var(--accent-blue)] border border-[var(--accent-blue-dim)] transition-all cursor-pointer align-super">
+                            <button type="button" onClick={() => onCitationClick(href, "")} title={`${source} ${page ? `p. ${page}` : row ? `r. ${row}` : "doc"}`} className="inline-flex items-center justify-center px-1 py-0.5 mx-0.5 rounded text-2xs font-mono font-bold bg-[var(--accent-blue-dim)] hover:bg-[var(--accent-blue-dim)]/80 text-[var(--accent-blue)] border border-[var(--accent-blue-dim)] transition-all cursor-pointer align-super">
                               [{label}]
                             </button>
                           );

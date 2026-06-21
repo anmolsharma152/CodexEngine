@@ -1,6 +1,5 @@
 import os
 import asyncio
-import uuid
 import json
 import tempfile
 import time
@@ -13,39 +12,27 @@ from pydantic import BaseModel
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from langgraph.graph import StateGraph, START, END
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from sqlalchemy import text
 
 from scripts.ingestion import ingest_file
-from src.state import AgentState
-from src.nodes.nodes import (
-    analyze_intent,
-    condense_question_node,
-    evaluate_retrieval,
-    generate_answer,
-    retrieve_hybrid_context,
-    rewrite_query,
-)
 from src.agent.agent_loop import agent_loop
 from src.agent import tools  # noqa: F401 — ensures tools are registered
 from src.log_utils import logger
 from src.supabase_client import supabase
-from src.db import engine, ensure_schema
+from src.db import async_engine, ensure_schema
 import src.storage_client as storage_client
 
 load_dotenv()
-DB_URL = os.environ["DB_URL"]
 
 # In-memory IP-based rate limiter (auth endpoints)
 _rate_limit_store: dict[str, list[float]] = defaultdict(list)
 _RATE_LIMIT_WINDOW = 60
 _RATE_LIMIT_MAX = 10
 
-# Per-user rate limiter (LLM endpoints — Groq free tier 30 RPM)
+# Per-user rate limiter (LLM endpoints)
 _user_rate_limit_store: dict[str, list[float]] = defaultdict(list)
 _USER_RATE_LIMIT_WINDOW = 60
-_USER_RATE_LIMIT_MAX = 8  # 8 chat requests/min per user (each triggers ~3-6 LLM calls)
+_USER_RATE_LIMIT_MAX = 8
 
 
 async def _check_rate_limit(request: Request):
@@ -90,15 +77,23 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         )
 
 
-def verify_thread_ownership(thread_id: str, user_id: str):
+async def verify_thread_ownership(thread_id: str, user_id: str):
     query = text("SELECT user_id FROM threads WHERE id = :thread_id;")
-    with engine.connect() as conn:
-        res = conn.execute(query, {"thread_id": thread_id}).fetchone()
-        if res and str(res[0]) != str(user_id):
+    async with async_engine.connect() as conn:
+        res = await conn.execute(query, {"thread_id": thread_id})
+        row = res.fetchone()
+        if row and str(row[0]) != str(user_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Forbidden: You do not own this thread",
             )
+
+
+async def save_message(thread_id: str, user_id: str, role: str, content: str):
+    query = text("INSERT INTO chat_messages (thread_id, user_id, role, content, created_at) VALUES (:thread_id, :user_id, :role, :content, EXTRACT(EPOCH FROM NOW())::BIGINT);")
+    async with async_engine.connect() as conn:
+        await conn.execute(query, {"thread_id": thread_id, "user_id": user_id, "role": role, "content": content})
+        await conn.commit()
 
 
 STORAGE_BUCKET = "documents"
@@ -147,54 +142,21 @@ async def _remove_storage_paths(paths: list[str], auth_token: str | None = None)
         logger.error(f"Failed to remove storage paths {paths}: {e}")
 
 
-# Graph definition
-def create_graph(checkpointer):
-    workflow = StateGraph(AgentState)
-    workflow.add_node("router", analyze_intent)
-    workflow.add_node("condense", condense_question_node)
-    workflow.add_node("retrieve", retrieve_hybrid_context)
-    workflow.add_node("evaluate", evaluate_retrieval)
-    workflow.add_node("rewrite", rewrite_query)
-    workflow.add_node("actor", generate_answer)
-    workflow.add_edge(START, "router")
-
-    def route_after_analysis(state: AgentState):
-        if state.get("intent") == "retrieval_required":
-            return "condense"
-        return "actor"
-
-    workflow.add_conditional_edges(
-        "router", route_after_analysis, {"condense": "condense", "actor": "actor"}
-    )
-    workflow.add_edge("condense", "retrieve")
-    workflow.add_edge("retrieve", "evaluate")
-    workflow.add_conditional_edges(
-        "evaluate", lambda x: x["next_step"], {"actor": "actor", "rewrite": "rewrite"}
-    )
-    workflow.add_edge("rewrite", "retrieve")
-    workflow.add_edge("actor", END)
-    return workflow.compile(checkpointer=checkpointer)
-
-
 # Lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await storage_client.ensure_bucket(STORAGE_BUCKET)
-    checkpointer_url = DB_URL.replace("postgresql+psycopg://", "postgresql://")
-    async with AsyncPostgresSaver.from_conn_string(checkpointer_url) as checkpointer:
-        await checkpointer.setup()
-        app.state.agent_engine = create_graph(checkpointer)
-        logger.info("LangGraph engine ready, LangSmith tracing active")
-        yield
+    logger.info("Engine ready")
+    yield
 
 
-# FastAPI app
-app = FastAPI(title="CodexEngine V4 API", lifespan=lifespan)
+app = FastAPI(title="CodexEngine V5 API", lifespan=lifespan)
 
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "app": "CodexEngine V4", "version": "4.0"}
+    return {"status": "ok", "app": "CodexEngine V5", "version": "5.0"}
+
 ALLOWED_ORIGINS = os.environ.get(
     "ALLOWED_ORIGINS",
     "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001",
@@ -227,6 +189,8 @@ class ChatRequest(BaseModel):
     message: str
     thread_id: str
     system_prompt: str | None = None
+    provider: str = "groq"
+    model: str | None = None
 
 
 # Endpoints
@@ -288,8 +252,8 @@ async def get_me_endpoint(current_user=Depends(get_current_user)):
 async def get_threads_endpoint(current_user=Depends(get_current_user)):
     query = text("SELECT id, title, timestamp, pinned FROM threads WHERE user_id = :user_id ORDER BY pinned DESC, timestamp DESC;")
     threads = []
-    with engine.connect() as conn:
-        res = conn.execute(query, {"user_id": current_user.id})
+    async with async_engine.connect() as conn:
+        res = await conn.execute(query, {"user_id": current_user.id})
         for r in res:
             threads.append({"id": r[0], "title": r[1], "timestamp": int(r[2]), "pinned": bool(r[3])})
     return {"threads": threads}
@@ -298,66 +262,56 @@ async def get_threads_endpoint(current_user=Depends(get_current_user)):
 @app.post("/threads")
 async def save_thread_endpoint(request: SaveThreadRequest, current_user=Depends(get_current_user)):
     select_query = text("SELECT id FROM threads WHERE id = :id AND user_id = :user_id;")
-    with engine.connect() as conn:
-        existing = conn.execute(select_query, {"id": request.id, "user_id": current_user.id}).fetchone()
-        if existing:
+    async with async_engine.connect() as conn:
+        existing = await conn.execute(select_query, {"id": request.id, "user_id": current_user.id})
+        row = existing.fetchone()
+        if row:
             update_query = text("UPDATE threads SET title = :title, timestamp = :timestamp, pinned = :pinned WHERE id = :id AND user_id = :user_id;")
-            conn.execute(update_query, {"title": request.title, "timestamp": request.timestamp, "pinned": request.pinned, "id": request.id, "user_id": current_user.id})
+            await conn.execute(update_query, {"title": request.title, "timestamp": request.timestamp, "pinned": request.pinned, "id": request.id, "user_id": current_user.id})
         else:
             insert_query = text("INSERT INTO threads (id, user_id, title, timestamp, pinned) VALUES (:id, :user_id, :title, :timestamp, :pinned);")
-            conn.execute(insert_query, {"id": request.id, "user_id": current_user.id, "title": request.title, "timestamp": request.timestamp, "pinned": request.pinned})
-        conn.commit()
+            await conn.execute(insert_query, {"id": request.id, "user_id": current_user.id, "title": request.title, "timestamp": request.timestamp, "pinned": request.pinned})
+        await conn.commit()
     return {"message": "Thread saved successfully"}
 
 
 @app.delete("/threads/{thread_id}")
 async def delete_thread_endpoint(thread_id: str, current_user=Depends(get_current_user)):
-    verify_thread_ownership(thread_id, current_user.id)
-    with engine.connect() as conn:
-        conn.execute(text("DELETE FROM threads WHERE id = :thread_id AND user_id = :user_id;"), {"thread_id": thread_id, "user_id": current_user.id})
-        conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'thread_id' = :thread_id;"), {"thread_id": thread_id})
-        conn.commit()
+    await verify_thread_ownership(thread_id, current_user.id)
+    async with async_engine.connect() as conn:
+        await conn.execute(text("DELETE FROM threads WHERE id = :thread_id AND user_id = :user_id;"), {"thread_id": thread_id, "user_id": current_user.id})
+        await conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'thread_id' = :thread_id;"), {"thread_id": thread_id})
+        await conn.commit()
     return {"message": "Thread deleted successfully"}
 
 
 @app.post("/chat/stream")
 async def chat_stream_endpoint(request: ChatRequest, current_user=Depends(get_current_user)):
     await _check_user_rate_limit(current_user.id)
-    verify_thread_ownership(request.thread_id, current_user.id)
+    await verify_thread_ownership(request.thread_id, current_user.id)
+    await save_message(request.thread_id, current_user.id, "user", request.message)
 
     async def event_generator():
+        full_response = ""
         try:
-            history = []
-            try:
-                from src.db import engine
-                from sqlalchemy import text as sql_text
-                config = {"configurable": {"thread_id": request.thread_id}}
-                state = await app.state.agent_engine.aget_state(config)
-                raw_messages = state.values.get("messages", [])
-                for msg in raw_messages:
-                    if isinstance(msg, tuple):
-                        role, content = msg[0], msg[1]
-                    elif hasattr(msg, "type"):
-                        role = "user" if msg.type == "human" else ("assistant" if msg.type == "ai" else msg.type)
-                        content = msg.content
-                    else:
-                        continue
-                    if role in ["user", "assistant"]:
-                        history.append({"role": role, "content": content})
-            except Exception:
-                pass  # No history available — fresh thread
-
             async for event_json in agent_loop(
                 user_message=request.message,
                 thread_id=request.thread_id,
                 user_id=current_user.id,
-                messages=history,
                 system_prompt=request.system_prompt,
+                provider=request.provider,
+                model=request.model,
             ):
                 yield f"data: {event_json}\n\n"
+                event = json.loads(event_json)
+                if event["type"] == "token":
+                    full_response += event["content"]
         except Exception as e:
             logger.error(f"Agent loop failure: {e}")
             yield f"data: {json.dumps({'type': 'error', 'content': f'Engine failure: {str(e)}'})}\n\n"
+        finally:
+            if full_response:
+                await save_message(request.thread_id, current_user.id, "assistant", full_response)
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -365,21 +319,13 @@ async def chat_stream_endpoint(request: ChatRequest, current_user=Depends(get_cu
 @app.get("/chat/{thread_id}/history")
 async def chat_history_endpoint(thread_id: str, current_user=Depends(get_current_user)):
     try:
-        verify_thread_ownership(thread_id, current_user.id)
-        config = {"configurable": {"thread_id": thread_id}}
-        state = await app.state.agent_engine.aget_state(config)
-        messages = state.values.get("messages", [])
+        await verify_thread_ownership(thread_id, current_user.id)
+        query = text("SELECT role, content FROM chat_messages WHERE thread_id = :thread_id AND user_id = :user_id ORDER BY created_at ASC;")
         history = []
-        for msg in messages:
-            if isinstance(msg, tuple):
-                role, content = msg[0], msg[1]
-            elif hasattr(msg, "type"):
-                role = "user" if msg.type == "human" else ("assistant" if msg.type == "ai" else msg.type)
-                content = msg.content
-            else:
-                continue
-            if role in ["user", "assistant"]:
-                history.append({"role": role, "content": content})
+        async with async_engine.connect() as conn:
+            res = await conn.execute(query, {"thread_id": thread_id, "user_id": current_user.id})
+            for r in res:
+                history.append({"role": r[0], "content": r[1]})
         return {"history": history}
     except Exception as e:
         logger.error(f"Failed to fetch history: {e}")
@@ -413,14 +359,14 @@ async def list_documents_endpoint(current_user=Depends(get_current_user)):
         user_prefix = f"{current_user.id}/"
         storage_files = await _list_storage_files(user_prefix, auth_token=current_user.token)
 
-        with engine.connect() as conn:
+        async with async_engine.connect() as conn:
             sql = text("""
                 SELECT metadata->>'source' as source, count(*) as count
                 FROM prose_chunks
                 WHERE metadata->>'user_id' = :user_id
                 GROUP BY source;
             """)
-            res = conn.execute(sql, {"user_id": str(current_user.id)})
+            res = await conn.execute(sql, {"user_id": str(current_user.id)})
             db_counts = {r[0]: r[1] for r in res}
 
         merged = []
@@ -453,19 +399,19 @@ async def list_documents_endpoint(current_user=Depends(get_current_user)):
 async def delete_document_endpoint(filename: str, thread_id: str = None, current_user=Depends(get_current_user)):
     try:
         if thread_id:
-            verify_thread_ownership(thread_id, current_user.id)
+            await verify_thread_ownership(thread_id, current_user.id)
             storage_path = _storage_path(current_user.id, filename, thread_id)
         else:
             storage_path = _storage_path(current_user.id, filename)
 
         await _remove_storage_paths([storage_path], auth_token=current_user.token)
 
-        with engine.connect() as conn:
+        async with async_engine.connect() as conn:
             if thread_id:
-                res = conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'thread_id' = :tid"), {"fn": filename, "tid": thread_id})
+                res = await conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'thread_id' = :tid"), {"fn": filename, "tid": thread_id})
             else:
-                res = conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'user_id' = :uid"), {"fn": filename, "uid": str(current_user.id)})
-            conn.commit()
+                res = await conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'user_id' = :uid"), {"fn": filename, "uid": str(current_user.id)})
+            await conn.commit()
             rowcount = res.rowcount
 
         return {"message": f"Successfully deleted {filename}", "db_chunks_deleted": rowcount}
@@ -478,7 +424,7 @@ async def delete_document_endpoint(filename: str, thread_id: str = None, current
 async def reingest_document(filename: str, thread_id: str = None, current_user=Depends(get_current_user)):
     try:
         if thread_id:
-            verify_thread_ownership(thread_id, current_user.id)
+            await verify_thread_ownership(thread_id, current_user.id)
             storage_path = _storage_path(current_user.id, filename, thread_id)
         else:
             storage_path = _storage_path(current_user.id, filename)
@@ -489,12 +435,12 @@ async def reingest_document(filename: str, thread_id: str = None, current_user=D
         renamed = os.path.join(os.path.dirname(tmp_path), filename)
         os.rename(tmp_path, renamed)
 
-        with engine.connect() as conn:
+        async with async_engine.connect() as conn:
             if thread_id:
-                res = conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'thread_id' = :tid"), {"fn": filename, "tid": thread_id})
+                res = await conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'thread_id' = :tid"), {"fn": filename, "tid": thread_id})
             else:
-                res = conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'user_id' = :uid"), {"fn": filename, "uid": str(current_user.id)})
-            conn.commit()
+                res = await conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'source' = :fn AND metadata->>'user_id' = :uid"), {"fn": filename, "uid": str(current_user.id)})
+            await conn.commit()
             rowcount = res.rowcount
 
         await asyncio.to_thread(ingest_file, renamed, thread_id, current_user.id)
@@ -509,7 +455,7 @@ async def reingest_document(filename: str, thread_id: str = None, current_user=D
 @app.post("/upload/temporal")
 async def upload_temporal_document(thread_id: str, file: UploadFile = File(...), current_user=Depends(get_current_user)):
     try:
-        verify_thread_ownership(thread_id, current_user.id)
+        await verify_thread_ownership(thread_id, current_user.id)
         raw = await file.read()
         storage_path = _storage_path(current_user.id, file.filename, thread_id)
         await storage_client.upload_file(STORAGE_BUCKET, storage_path, raw, file.content_type, auth_token=current_user.token)
@@ -532,16 +478,16 @@ async def upload_temporal_document(thread_id: str, file: UploadFile = File(...),
 @app.delete("/chat/{thread_id}/temporal")
 async def delete_temporal_chunks_endpoint(thread_id: str, current_user=Depends(get_current_user)):
     try:
-        verify_thread_ownership(thread_id, current_user.id)
+        await verify_thread_ownership(thread_id, current_user.id)
         prefix = f"{current_user.id}/{thread_id}/"
         objects = await storage_client.list_files(STORAGE_BUCKET, prefix, auth_token=current_user.token)
         paths_to_remove = [f"{prefix}{o['name']}" for o in objects if o.get("name") and not o["name"].endswith("/")]
         if paths_to_remove:
             await _remove_storage_paths(paths_to_remove, auth_token=current_user.token)
 
-        with engine.connect() as conn:
-            res = conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'thread_id' = :tid"), {"tid": thread_id})
-            conn.commit()
+        async with async_engine.connect() as conn:
+            res = await conn.execute(text("DELETE FROM prose_chunks WHERE metadata->>'thread_id' = :tid"), {"tid": thread_id})
+            await conn.commit()
             rowcount = res.rowcount
 
         return {"message": f"Cleared temporal chunks for session {thread_id}", "storage_files_deleted": len(paths_to_remove), "db_chunks_deleted": rowcount}

@@ -3,10 +3,6 @@ pydantic>=2.6.0
 fastapi[standard]>=0.112.0
 python-multipart>=0.0.9
 
-# --- LangGraph Orchestration & Stateful Memory ---
-langgraph>=0.0.30
-langgraph-checkpoint-postgres>=2.0.0
-
 # --- Database & Vector Middleware ---
 psycopg[binary]>=3.1.18
 psycopg-pool>=3.2.1
@@ -17,9 +13,8 @@ pymupdf>=1.24.0
 langchain-text-splitters>=0.2.0
 
 # --- AI Models & API Drivers ---
-langchain-core>=0.1.30
-langchain-groq>=0.1.0
 httpx>=0.27.0
+openai>=1.0.0
 
 # --- Retrieval & Search ---
 rank-bm25>=0.2.2

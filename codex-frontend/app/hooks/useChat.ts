@@ -138,13 +138,6 @@ export function useChat(
                     copy[lastIdx] = { ...copy[lastIdx], content: copy[lastIdx].content + data.content };
                     return copy;
                   });
-                } else if (data.type === "evaluation") {
-                  setMessages((prev) => {
-                    const copy = [...prev];
-                    const lastIdx = copy.length - 1;
-                    copy[lastIdx] = { ...copy[lastIdx], intent: data.intent, evaluation: data.content, context: data.context };
-                    return copy;
-                  });
                 } else if (data.type === "done") {
                   setStatus("Stream complete.");
                 } else if (data.type === "error") {
