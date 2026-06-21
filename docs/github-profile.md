@@ -41,4 +41,4 @@ rag, document-qa, self-hosted, pgvector, fastapi, nextjs, python, ai-agent, know
 | `ai-agent` | Agent loop architecture (v5+) |
 | `knowledge-management` | Workspace artifact direction (v5) |
 
-Do not add: `enterprise`, `langgraph`, `multi-agent` — not accurate.
+Do not add: `enterprise`, `langgraph`, `multi-agent` — not accurate for v5.
