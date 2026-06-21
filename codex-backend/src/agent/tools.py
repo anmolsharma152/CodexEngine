@@ -153,3 +153,16 @@ async def search_web(query: str) -> str:
     except Exception as e:
         logger.error(f"Web search failed: {e}")
         return ""
+
+
+@tool
+async def read_document(path: str, project_id: str = "", user_id: str = "") -> str:
+    """Read a workspace artifact by path. Returns the full content."""
+    logger.info(f"Read document: {path} project={project_id}")
+    sql = text("SELECT content FROM workspace_artifacts WHERE path = :path AND project_id = :project_id;")
+    async with async_engine.connect() as conn:
+        res = await conn.execute(sql, {"path": path, "project_id": project_id})
+        row = res.fetchone()
+        if not row:
+            return f"Error: no artifact found at '{path}' in this project."
+        return row[0]
