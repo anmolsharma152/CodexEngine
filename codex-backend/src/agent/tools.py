@@ -7,6 +7,7 @@ is just reasoning — the LLM does that directly.
 """
 
 import asyncio
+import uuid
 from sqlalchemy import text
 from duckduckgo_search import DDGS
 
@@ -166,3 +167,26 @@ async def read_document(path: str, project_id: str = "", user_id: str = "") -> s
         if not row:
             return f"Error: no artifact found at '{path}' in this project."
         return row[0]
+
+
+_RESERVED_PATHS = {"memory/workspace-state.json"}
+
+
+@tool
+async def write_document(path: str, content: str, project_id: str = "", artifact_type: str = "document") -> str:
+    """Write or overwrite a workspace artifact. Creates a persistent document, note, or analysis that can be read later with read_document."""
+    if path in _RESERVED_PATHS and artifact_type != "memory":
+        return f"Error: path '{path}' is reserved for system use."
+    logger.info(f"Write document: {path} project={project_id} type={artifact_type}")
+    sql = text("""
+        INSERT INTO workspace_artifacts (id, project_id, path, content, artifact_type, created_at, updated_at)
+        VALUES (:id, :project_id, :path, :content, :artifact_type, EXTRACT(EPOCH FROM NOW())::BIGINT, EXTRACT(EPOCH FROM NOW())::BIGINT)
+        ON CONFLICT (project_id, path) DO UPDATE SET
+            content = :content,
+            artifact_type = :artifact_type,
+            updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT;
+    """)
+    async with async_engine.connect() as conn:
+        await conn.execute(sql, {"id": str(uuid.uuid4()), "project_id": project_id, "path": path, "content": content, "artifact_type": artifact_type})
+        await conn.commit()
+    return f"Written to {path}."
