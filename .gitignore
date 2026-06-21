@@ -16,7 +16,6 @@ __pycache__/
 *.sublime-project
 .idea/
 .vscode/
-.opencode/
 
 # Backend data & logs
 data/
@@ -37,9 +36,9 @@ codex-frontend/.next/
 chroma_db/
 archives/chroma_db_old/
 
-# LangSmith
-.langsmith*
+# AI Coding Assistants
 .aider*
+.opencode/
 
 # Jules / external analysis artifacts
 ANALYSIS*.md
@@ -49,3 +48,4 @@ CLAUDE.md
 
 # Stale pre-rename directory
 codex-ui/
+.langsmith*
