@@ -89,9 +89,10 @@ STORAGE_BUCKET = "documents"
 
 
 def _storage_path(user_id: str, filename: str, thread_id: str | None = None) -> str:
+    safe_name = filename.replace(" ", "_")
     if thread_id:
-        return f"{user_id}/{thread_id}/{filename}"
-    return f"{user_id}/{filename}"
+        return f"{user_id}/{thread_id}/{safe_name}"
+    return f"{user_id}/{safe_name}"
 
 
 async def _download_from_storage(storage_path: str, auth_token: str | None = None) -> str | None:
@@ -381,7 +382,8 @@ async def upload_document(file: UploadFile = File(...), current_user=Depends(get
         tmp_path = await _download_from_storage(storage_path, auth_token=current_user.token)
         if not tmp_path:
             raise RuntimeError("Failed to retrieve uploaded file for ingestion")
-        renamed = os.path.join(os.path.dirname(tmp_path), file.filename)
+        safe_filename = os.path.basename(storage_path)
+        renamed = os.path.join(os.path.dirname(tmp_path), safe_filename)
         os.rename(tmp_path, renamed)
         await asyncio.to_thread(ingest_file, renamed, None, current_user.id)
         os.unlink(renamed)
@@ -503,7 +505,8 @@ async def upload_temporal_document(thread_id: str, file: UploadFile = File(...),
         tmp_path = await _download_from_storage(storage_path, auth_token=current_user.token)
         if not tmp_path:
             return JSONResponse(status_code=500, content={"message": "Failed to retrieve uploaded file for ingestion"})
-        renamed = os.path.join(os.path.dirname(tmp_path), file.filename)
+        safe_filename = os.path.basename(storage_path)
+        renamed = os.path.join(os.path.dirname(tmp_path), safe_filename)
         os.rename(tmp_path, renamed)
         await asyncio.to_thread(ingest_file, renamed, thread_id, current_user.id)
         os.unlink(renamed)
