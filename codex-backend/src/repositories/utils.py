@@ -1,6 +1,5 @@
 import os
 import re
-import socket
 import threading
 
 import httpx
@@ -11,14 +10,6 @@ from src.log_utils import logger
 load_dotenv()
 
 _GEMINI_BASE = "generativelanguage.googleapis.com"
-_GEMINI_IPV4 = None
-
-
-def _resolve_gemini_ipv4():
-    global _GEMINI_IPV4
-    if _GEMINI_IPV4 is None:
-        _GEMINI_IPV4 = socket.getaddrinfo(_GEMINI_BASE, 443, socket.AF_INET)[0][4][0]
-    return _GEMINI_IPV4
 
 
 class GeminiEmbeddingWrapper:
@@ -27,15 +18,14 @@ class GeminiEmbeddingWrapper:
         self._model = "models/gemini-embedding-001"
 
     def _make_url(self):
-        ip = _resolve_gemini_ipv4()
         key = os.getenv("GOOGLE_API_KEY")
-        return f"https://{ip}/v1beta/{self._model}:embedContent?key={key}"
+        return f"https://{_GEMINI_BASE}/v1beta/{self._model}:embedContent?key={key}"
 
     def _embed(self, texts: list[str]) -> list[list[float]]:
         try:
             resp = self._client.post(
                 self._make_url(),
-                headers={"Host": _GEMINI_BASE, "Content-Type": "application/json"},
+                headers={"Content-Type": "application/json"},
                 json={
                     "requests": [{"model": self._model, "content": {"parts": [{"text": t}]}, "outputDimensionality": 384} for t in texts]
                 },
