@@ -154,5 +154,5 @@ Authorization: Bearer <token>
 ```
 GET /
 
-→ 200 {"status": "ok", "app": "CodexEngine V4", "version": "4.0"}
+→ 200 {"status": "ok", "app": "CodexEngine", "version": "5.0"}
 ```

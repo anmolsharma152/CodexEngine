@@ -150,12 +150,12 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="CodexEngine V5 API", lifespan=lifespan)
+app = FastAPI(title="CodexEngine", lifespan=lifespan)
 
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "app": "CodexEngine V5", "version": "5.0"}
+    return {"status": "ok", "app": "CodexEngine", "version": "5.0"}
 
 ALLOWED_ORIGINS = os.environ.get(
     "ALLOWED_ORIGINS",
