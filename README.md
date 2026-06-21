@@ -48,11 +48,10 @@ CodexEngine began as a retrieval-first research engine and is now being used to 
 
 ## Branches
 
-| Branch         | Status           | Purpose                                              |
-| -------------- | ---------------- | ---------------------------------------------------- |
-| `main`         | Stable           | Production-ready document intelligence platform (v4) |
-| `release/v4.0` | Release Snapshot | Frozen v4.0 release                                  |
-| `agentic`      | Experimental     | Workspace-agent research and v5 development          |
+| Branch    | Status       | Purpose                                     |
+| --------- | ------------ | ------------------------------------------- |
+| `main`    | Stable       | Production-ready document intelligence platform (v4) |
+| `agentic` | Experimental | Workspace-agent research and v5 development |
 
 ## Quick Start
 
