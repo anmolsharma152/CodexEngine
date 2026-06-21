@@ -1,8 +1,58 @@
 # CodexEngine
 
-Upload documents, ask questions, get answers backed by your own knowledge base.
+A self-hosted document intelligence platform that lets you upload documents, ask questions, and get answers backed by source citations.
 
-A personalized AI research assistant — you feed it PDFs, it indexes them, and you chat with your documents using a multi-agent RAG pipeline. Think NotebookLM, but self-hosted and developer-friendly.
+The project currently has two tracks:
+
+- v4: a stable retrieval-first research engine
+- v5: an experimental workspace agent that creates and reuses persistent artifacts
+
+## Repository Structure
+
+### Stable Release (v4)
+
+The `main` branch contains the stable document intelligence platform:
+
+- PDF and document ingestion
+- Hybrid retrieval (vector search + BM25)
+- Source citations
+- FastAPI backend
+- Next.js frontend
+- PostgreSQL + pgvector
+- Self-hosted deployment
+
+### Experimental Development (v5)
+
+Active development is happening on the `agentic` branch.
+
+The current research direction explores whether persistent artifacts can make AI assistants more useful than chat alone. Instead of relying entirely on conversation history, the agent creates, stores, and reuses workspace artifacts across sessions.
+
+Highlights:
+
+- Custom agent loop (no LangGraph)
+- Provider-agnostic LLM layer
+- Workspace artifacts
+- Persistent context experiments
+- Tool-driven architecture
+
+➡️ Experimental branch:
+<https://github.com/anmolsharma152/CodexEngine/tree/agentic>
+
+## Why This Project Exists
+
+Most document assistants answer a question and immediately forget the work they just performed.
+
+CodexEngine started as a retrieval-augmented research system and is evolving into an experiment around persistent AI workspaces, where analysis, reports, and findings can become reusable knowledge objects.
+
+CodexEngine began as a retrieval-first research engine and is now being used to explore persistent AI workspaces.
+
+## Branches
+
+| Branch         | Status           | Purpose                                              |
+| -------------- | ---------------- | ---------------------------------------------------- |
+| `main`         | Stable           | Production-ready document intelligence platform (v4) |
+| `release/v4.0` | Release Snapshot | Frozen v4.0 release                                  |
+| `agentic`      | Experimental     | Workspace-agent research and v5 development          |
 
 ## Quick Start
 
@@ -33,15 +83,17 @@ When you ask a question, CodexEngine:
 3. Scores and reranks the results
 4. Generates an answer with source citations (`[p. X]`, `[r. X]`, `[doc]`, `[web]`)
 
-All of this runs through a LangGraph agent pipeline with self-evaluation loops (up to 3 retries if the initial answer is weak).
+All of this runs through the v4 retrieval pipeline, which currently uses LangGraph-based orchestration and self-evaluation loops (up to 3 retries if the initial answer is weak).
+
+The experimental `agentic` branch replaces this architecture with a custom agent loop.
 
 ### Running Modes
 
-| Feature | Local / CI | Production (Render 512MB) |
-|---|---|---|
-| Embeddings | fastembed ONNX (`bge-small-en-v1.5`) | Google Gemini API |
-| Reranker | CrossEncoder (`ms-marco-MiniLM-L-6-v2`) | Score-based sort |
-| Detection | `MemTotal > 1.5GB` or no `RENDER` env | `RENDER=true` or `< 1.5GB` |
+| Feature    | Local / CI                              | Production (Render 512MB)  |
+| ---------- | --------------------------------------- | -------------------------- |
+| Embeddings | fastembed ONNX (`bge-small-en-v1.5`)    | Google Gemini API          |
+| Reranker   | CrossEncoder (`ms-marco-MiniLM-L-6-v2`) | Score-based sort           |
+| Detection  | `MemTotal > 1.5GB` or no `RENDER` env   | `RENDER=true` or `< 1.5GB` |
 
 Both modes produce 384-dimensional vectors.
 
@@ -125,3 +177,14 @@ python eval/ragas_eval.py         # RAGAS metrics
 
 - [Deployment guide](docs/deployment.md) — Render, Vercel, Supabase setup
 - [API reference](docs/api.md) — endpoint table with request/response examples
+
+## Technical Highlights
+
+- FastAPI backend
+- Next.js frontend
+- PostgreSQL + pgvector
+- Hybrid retrieval (vector + BM25)
+- Server-sent events (SSE) streaming
+- Supabase authentication and storage
+- Provider-agnostic LLM architecture
+- Workspace-agent experimentation (v5)
