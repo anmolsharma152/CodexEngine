@@ -179,7 +179,6 @@ This repository has three long-lived branches:
 | Branch                      | Purpose                         | Status                       |
 | --------------------------- | ------------------------------- | ---------------------------- |
 | `main`                      | Stable v4 research engine       | Production (Render + Vercel) |
-| `release/v4.0`              | Frozen v4 release snapshot      | Historical reference         |
 | `agentic` **(this branch)** | Experimental v5 workspace agent | Active research              |
 
 The root `README.md` on the `main` branch is the canonical
