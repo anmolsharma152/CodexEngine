@@ -19,7 +19,18 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: "CodexEngine",
-  description: "Enterprise stateful RAG and multi-agent retrieval system",
+  description: "Self-hosted document intelligence — upload PDFs, ask questions, get cited answers from your private knowledge base.",
+  keywords: ["document Q&A", "RAG", "self-hosted", "PDF chat", "vector search", "pgvector", "knowledge base"],
+  openGraph: {
+    title: "CodexEngine",
+    description: "Self-hosted document intelligence — upload PDFs, ask questions, get cited answers from your private knowledge base.",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "CodexEngine",
+    description: "Self-hosted document intelligence — upload PDFs, ask questions, get cited answers from your private knowledge base.",
+  },
   icons: {
     icon: [
       { url: "/favicon.svg", type: "image/svg+xml" },
