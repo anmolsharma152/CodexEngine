@@ -107,7 +107,7 @@ export function useChat(
       const response = await authFetch(`${API_BASE}/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage, thread_id: threadId, system_prompt: systemPrompt }),
+        body: JSON.stringify({ message: userMessage, thread_id: threadId, system_prompt: systemPrompt, project_id: projectId || "default" }),
         signal: controller.signal,
       });
       if (!response.body) throw new Error("No response body");
@@ -166,7 +166,7 @@ export function useChat(
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
-  }, [input, isStreaming, threadId, authFetch]);
+  }, [input, isStreaming, threadId, projectId, authFetch]);
 
   const exportChatMarkdown = useCallback(() => {
     if (messages.length === 0) return;
