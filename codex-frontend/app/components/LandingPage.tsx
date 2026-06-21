@@ -1,6 +1,6 @@
 "use client";
 
-import { Sparkles, MessageSquare, TerminalSquare, Settings, Pin } from "lucide-react";
+import { Sparkles, Search, Shield, Brain, FileText } from "lucide-react";
 import AuthForm from "./AuthForm";
 
 interface LandingPageProps {
@@ -28,21 +28,22 @@ export default function LandingPage(props: LandingPageProps) {
           <div className="space-y-6">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent-blue-dim)] border border-[var(--accent-blue-dim)] text-[var(--accent-blue)] text-xs font-semibold uppercase tracking-wider">
               <Sparkles size={12} className="animate-pulse" />
-              Stateful Cognitive Engine v4.0
+              Self-Hosted Document Intelligence
             </div>
             <div>
               <h1 className="text-4xl lg:text-5xl font-extrabold bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent tracking-tight">CodexEngine</h1>
-              <p className="text-sm font-medium text-[var(--accent-blue)] mt-1 uppercase tracking-widest">Cognitive Knowledge Operating System</p>
+              <p className="text-sm font-medium text-[var(--accent-blue)] mt-1 uppercase tracking-widest">Research Engine</p>
             </div>
             <p className="text-sm text-[var(--text-secondary)] leading-relaxed max-w-xl">
-              An enterprise-grade, stateful cognitive retrieval and multi-agent orchestration system.
+              Upload documents, ask questions, get cited answers backed by your own knowledge base.
+              Your data stays on your infrastructure.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
               {[
-                { icon: MessageSquare, color: "#8b5cf6", title: "LangGraph State Machine", desc: "Dynamic intent routing and actor-critic loop for context-aware retrieval." },
-                { icon: TerminalSquare, color: "#3b82f6", title: "pgvector Hybrid Search", desc: "ONNX-accelerated 384-dim dense vectors with cosine similarity thresholds." },
-                { icon: Settings, color: "#10b981", title: "Cognition Observability", desc: "Real-time relevance, confidence, and source groundedness metrics." },
-                { icon: Pin, color: "#f59e0b", title: "Secure Multi-Tenant Isolation", desc: "JWT-shielded user threads and documents — your data stays invisible." },
+                { icon: Search, color: "#3b82f6", title: "Hybrid Search", desc: "Vector + BM25 search across your documents with source citations." },
+                { icon: Shield, color: "#10b981", title: "Self-Hosted", desc: "Your data stays on your infrastructure. No third-party document access." },
+                { icon: Brain, color: "#8b5cf6", title: "Multi-Provider LLM", desc: "Works with Groq, OpenAI, Together, and Gemini — you choose." },
+                { icon: FileText, color: "#f59e0b", title: "Flexible Agent Loop", desc: "The LLM decides which tools to call — search, research, or answer directly." },
               ].map((feat, i) => (
                 <div key={i} className="space-y-1.5 p-4 rounded-xl bg-[var(--bg-hover)] border border-[var(--border-default)] hover:border-[var(--border-hover)] transition-all duration-300 group">
                   <div className="flex items-center gap-2 text-[var(--text-primary)] font-semibold text-sm">
