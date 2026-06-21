@@ -10,12 +10,13 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# IDE
+# IDE / Agent tools
 .DS_Store
 *.sublime-workspace
 *.sublime-project
 .idea/
 .vscode/
+.opencode/
 
 # Backend data & logs
 data/
