@@ -1,13 +1,139 @@
-# CodexEngine
+# CodexEngine v5 — Experimental Workspace Agent
 
-**Upload documents, ask questions, get answers backed by your own knowledge base.**
+> **Status:** Experimental — Active Development — Not Production-Ready
 
-A self-hosted document intelligence tool — you feed it PDFs, it indexes them, and you chat with your documents with source citations. Think NotebookLM, but self-hosted and developer-friendly.
+CodexEngine v5 is an experimental evolution of the v4 research engine.
+The agent doesn't just answer questions — it can create persistent
+workspace artifacts and read them later, allowing work from one session
+to be reused in future conversations.
 
-| Branch | Status | What it does |
-|---|---|---|
-| `main` | **Stable (v4)** | Research engine — upload, index, chat, citations |
-| `agentic` | **Experimental (v5)** | Workspace agent — agent creates and reads persistent artifacts |
+---
+
+## Status
+
+- **Branch:** `agentic`
+- **Stage:** Active research and development
+- **Stability:** Subject to rebasing, API changes, and schema migrations
+- **Not production-ready** - APIs, schemas, and behavior may change without notice.
+
+---
+
+## What Changed From v4
+
+| Feature               | v4 (`main`)                          | v5 (`agentic`)                                      |
+| --------------------- | ------------------------------------ | --------------------------------------------------- |
+| Agent framework       | LangGraph StateGraph (hardcoded DAG) | Custom while-true loop (LLM decides)                |
+| Tool model            | 6 fixed pipeline nodes               | 5 `@tool`-decorated functions                       |
+| LLM providers         | Groq only                            | Groq, OpenAI, Together, Gemini                      |
+| Tool definitions      | Generated manually                   | Auto-generated from type hints + docstrings         |
+| Workspace Persistence | None                                 | Workspace artifacts                                 |
+| Artifact tools        | None                                 | `read_document`, `write_document`, `list_documents` |
+| Project isolation     | None                                 | `project_id` scoping for all artifacts              |
+| Instrumentation       | Limited                              | tool_invocations logging table                      |
+| SSE events            | Full pipeline state                  | Status, tool_call, tool_result, token, done, error  |
+| Message storage       | LangGraph checkpointer               | `chat_messages` table (manual persistence)          |
+
+---
+
+## Architecture
+
+The agent loop is intentionally small and framework-light.
+The LLM receives tool definitions and decides per-turn whether to call a
+tool or respond directly.
+
+```
+User Message
+     │
+     ▼
+┌──────────────────────────────┐
+│     Flexible Agent Loop      │
+│                              │
+│  LLM decides per-turn:       │
+│                              │
+│  ┌──────────────────────┐    │
+│  │ tool_call(s) → exec  │───→│ loop (multi-step)
+│  │ respond       → emit │───→│ done
+│  └──────────────────────┘    │
+└──────────────────────────────┘
+```
+
+### Tools
+
+| Tool               | Purpose                                               |
+| ------------------ | ----------------------------------------------------- |
+| `search_documents` | Hybrid vector + BM25 search across uploaded documents |
+| `search_web`       | DuckDuckGo fallback for external information          |
+| `read_document`    | Read a workspace artifact by path                     |
+| `write_document`   | Create or overwrite a workspace artifact              |
+| `list_documents`   | List artifacts, optionally filtered by path pattern   |
+
+### Project Isolation
+
+Every artifact is scoped to a `project_id`. The agent loop injects the
+active project ID into all workspace tool calls automatically — the LLM
+does not need to populate it. This ensures:
+
+- Artifacts in project A are invisible from project B
+- `list_documents` returns only artifacts for the active project
+- Cross-project leaks are prevented at the query level
+
+### How It Works
+
+When you ask a question, CodexEngine runs a flexible agent loop — the
+LLM decides dynamically which tools to call and in what order:
+
+1. **Search documents** — Hybrid vector + BM25 search across your indexed
+   documents
+2. **Search web** — DuckDuckGo fallback for external information
+3. **Read/write artifacts** — Create and consume persistent workspace
+   documents
+4. **Generate** — Produces a final answer with source citations
+   (`[p. X]`, `[r. X]`, `[doc]`, `[web]`)
+
+For a detailed architecture diagram and agent design notes, see AGENTS.md.
+
+---
+
+## Research Questions
+
+The workspace experiment exists to gather evidence on:
+
+1. **Artifact usefulness** — Do persistent artifacts improve output quality
+   compared to chat-only responses?
+
+2. **Artifact reuse** — Will the agent read artifacts it wrote previously,
+   or does it start from scratch every session?
+
+3. **Project isolation** — When artifacts are scoped to projects, does the
+   agent respect project boundaries?
+
+4. **Artifact vs. search preference** — When answering a question that could
+   be answered from either an artifact or a fresh retrieval, which does the
+   agent choose?
+
+5. **Cross-session continuity** — Can the agent carry context across sessions
+   by reading its own artifacts?
+
+---
+
+## Dogfooding Status
+
+A 7-day evaluation plan is in progress. The plan covers:
+
+- **Day 1:** Project isolation baseline (create artifacts in two projects,
+  verify no leaks)
+- **Day 2:** Artifact production + same-session reuse (write, then read back)
+- **Day 3:** Artifact vs. search preference (cold question an artifact can
+  answer — the most important test)
+- **Day 4:** Overwrite awareness + path conventions
+- **Day 5:** Cross-session reuse (24-hour gap)
+- **Day 6:** Project switching + cross-project isolation
+- **Day 7:** Retrospective + evidence compilation
+
+Each day includes exact prompts, expected tool calls, failure signals,
+and SQL queries for evidence collection.
+
+See the full plan at [docs/7-day-dogfooding-plan.md](docs/7-day-dogfooding-plan.md).
 
 ---
 
@@ -16,6 +142,7 @@ A self-hosted document intelligence tool — you feed it PDFs, it indexes them, 
 ```bash
 git clone https://github.com/anmolsharma152/CodexEngine.git
 cd CodexEngine
+git checkout agentic
 
 # Backend
 cd codex-backend
@@ -29,139 +156,47 @@ cd codex-frontend
 npm install && npm run dev
 ```
 
-Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL` in `codex-frontend/.env.local`. Open `http://localhost:3000` — register, upload a PDF, and start asking questions.
+Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`NEXT_PUBLIC_API_URL` in `codex-frontend/.env.local`.
 
----
-
-## How It Works
-
-When you ask a question, CodexEngine runs a **flexible agent loop** — the LLM decides dynamically which tools to call and in what order:
-
-1. **Search documents** — Hybrid vector + BM25 search across your indexed documents
-2. **Search web** — DuckDuckGo fallback for external information
-3. **Generate** — Produces a final answer with source citations (`[p. X]`, `[r. X]`, `[doc]`, `[web]`)
-
-On the `agentic` branch, three additional tools enable workspace artifact production:
-`read_document`, `write_document`, and `list_documents`.
-
-All of this runs through a custom while-true agent loop (replacing the old LangGraph pipeline). The LLM has access to tool functions and decides per-turn whether to call a tool or respond directly.
+Open `http://localhost:3000` — register, upload a PDF, and start asking
+questions.
 
 ### Running Modes
 
-| Feature | Local / CI | Production (Render 512MB) |
-|---|---|---|
-| Embeddings | fastembed ONNX (`bge-small-en-v1.5`) | Google Gemini API |
-| Reranker | CrossEncoder (`ms-marco-MiniLM-L-6-v2`) | Score-based sort |
-| Detection | `MemTotal > 1.5GB` or no `RENDER` env | `RENDER=true` or `< 1.5GB` |
-
-Both modes produce 384-dimensional vectors.
+| Feature    | Local / CI                              | Production (Render 512MB)  |
+| ---------- | --------------------------------------- | -------------------------- |
+| Embeddings | fastembed ONNX (`bge-small-en-v1.5`)    | Google Gemini API          |
+| Reranker   | CrossEncoder (`ms-marco-MiniLM-L-6-v2`) | Score-based sort           |
+| Detection  | `MemTotal > 1.5GB` or no `RENDER` env   | `RENDER=true` or `< 1.5GB` |
 
 ---
 
-## Architecture
+## Relationship To Main
 
-```mermaid
-flowchart TD
-    User([User / Browser])
+This repository has three long-lived branches:
 
-    subgraph Frontend [codex-frontend — Next.js 15]
-        AuthUI[Auth UI]
-        ChatUI[Chat UI / SSE]
-        Comp[Sidebar, Search, Projects,<br>DocManager, Settings]
-        SupaSDK["@supabase/supabase-js<br>Auth JWT → Bearer"]
-    end
+| Branch                      | Purpose                         | Status                       |
+| --------------------------- | ------------------------------- | ---------------------------- |
+| `main`                      | Stable v4 research engine       | Production (Render + Vercel) |
+| `release/v4.0`              | Frozen v4 release snapshot      | Historical reference         |
+| `agentic` **(this branch)** | Experimental v5 workspace agent | Active research              |
 
-    subgraph Supabase [Supabase]
-        SA[Auth<br>sign up / sign in]
-        SB[Storage<br>documents bucket]
-    end
-
-    subgraph Backend [codex-backend — FastAPI]
-        direction LR
-        AL[Agent Loop<br>while-true LLM→tool→loop]
-
-        subgraph Tools["Tool Registry"]
-            SD["search_documents"]
-            SW["search_web"]
-            RD["read_document"]
-            WD["write_document"]
-            LD["list_documents"]
-        end
-
-        Rate[Rate Limiter<br>8 req/min per user]
-        Ing[File Ingestion]
-    end
-
-    subgraph DB [PostgreSQL + pgvector]
-        Threads[threads]
-        Chunks[prose_chunks<br>384-dim vectors]
-        Artifacts[workspace_artifacts]
-    end
-
-    subgraph External [External APIs]
-        Groq[Groq<br>LLM — llama-3.1 / 3.3]
-        Gemini[Google Gemini<br>embeddings]
-        FastEmbed[fastembed ONNX<br>embeddings]
-    end
-
-    User --> Frontend
-    AuthUI --> SA
-    SA -.->|JWT session| SupaSDK
-    SupaSDK --> Backend
-    ChatUI <-->|SSE stream| Backend
-    Comp <-->|REST| Backend
-
-    Rate --> AL
-    AL --> SD & SW & RD & WD & LD
-    SD --> Chunks
-    SW --> DuckDuckGo
-
-    Backend --> SB
-    Backend --> DB
-    Backend --> Groq
-
-    SD ---> FastEmbed
-    SD -.->|fallback| Gemini
-```
-
----
-
-## Branches
-
-### `main` — v4 (Stable Research Engine)
-
-The production-deployed version.
-- LangGraph-based RAG pipeline (legacy, replaced in v5)
-- Upload PDFs, chat with documents, get cited answers
-- Deployed on Render + Vercel
-
-### `agentic` — v5 (Experimental Workspace Agent)
-
-Active development branch.
-- Custom while-true agent loop (no LangGraph)
-- `@tool` decorator registry with 5 tools
-- Provider-agnostic LLM layer (Groq, OpenAI, Together, Gemini)
-- Persistent workspace artifacts — agent writes `analysis/`, `plans/`, `decisions/`
-- Tool invocation logging
-- Subject to rebasing and API changes
-
----
-
-## Testing
-
-```bash
-cd codex-backend
-source .venv/bin/activate
-python tests/test_golden.py       # Single golden query
-python tests/test_rigorous.py     # Full sweep
-python eval/ragas_eval.py         # RAGAS metrics
-```
+The root `README.md` on the `main` branch is the canonical
+repository-level landing page. This document is the branch-specific
+v5 README — it describes the experimental features and research goals
+that differ from the stable v4 release.
 
 ---
 
 ## Learn More
 
+- [Documentation index](docs/README.md) — complete map of all documentation
+- [7-Day Dogfooding Plan](docs/7-day-dogfooding-plan.md) — day-by-day evaluation protocol
+- [Workspace Experiment](codex-backend/docs/workspace-experiment.md) — hypothesis, metrics, success criteria
+- [Project Isolation Validation](codex-backend/docs/project-isolation-validation.md) — `project_id` end-to-end tests
+- [Future Memory Model](codex-backend/docs/future-memory-model.md) — research notes for post-MVP architecture
+- [Dogfooding Checklist](codex-backend/docs/dogfooding-checklist.md) — quick-reference scorecard
 - [Deployment guide](docs/deployment.md) — Render, Vercel, Supabase setup
 - [API reference](docs/api.md) — endpoint table with request/response examples
 - [Agent architecture](AGENTS.md) — agent loop design, tool registry, reference research
-- [Workspace experiment](codex-backend/docs/workspace-experiment.md) — v5 artifact production hypothesis and results
