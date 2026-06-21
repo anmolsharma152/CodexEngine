@@ -188,6 +188,7 @@ class SaveThreadRequest(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     thread_id: str
+    project_id: str = "default"
     system_prompt: str | None = None
     provider: str = "groq"
     model: str | None = None
@@ -298,6 +299,7 @@ async def chat_stream_endpoint(request: ChatRequest, current_user=Depends(get_cu
                 user_message=request.message,
                 thread_id=request.thread_id,
                 user_id=current_user.id,
+                project_id=request.project_id,
                 system_prompt=request.system_prompt,
                 provider=request.provider,
                 model=request.model,
