@@ -1,11 +1,15 @@
 # CodexEngine
 
-Upload documents, ask questions, get answers backed by your own knowledge base.
+**Upload documents, ask questions, get answers backed by your own knowledge base.**
 
-A personalized AI research assistant — you feed it PDFs, it indexes them, and you chat with your documents. Think NotebookLM, but self-hosted and developer-friendly.
+A self-hosted document intelligence tool — you feed it PDFs, it indexes them, and you chat with your documents with source citations. Think NotebookLM, but self-hosted and developer-friendly.
 
-> **v4.0** is stable on `main` (LangGraph pipeline, deployed Render + Vercel).  
-> **v5.0** is in progress on `agentic` (custom agent loop, tool-based architecture).
+| Branch | Status | What it does |
+|---|---|---|
+| `main` | **Stable (v4)** | Research engine — upload, index, chat, citations |
+| `agentic` | **Experimental (v5)** | Workspace agent — agent creates and reads persistent artifacts |
+
+---
 
 ## Quick Start
 
@@ -27,16 +31,20 @@ npm install && npm run dev
 
 Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL` in `codex-frontend/.env.local`. Open `http://localhost:3000` — register, upload a PDF, and start asking questions.
 
+---
+
 ## How It Works
 
 When you ask a question, CodexEngine runs a **flexible agent loop** — the LLM decides dynamically which tools to call and in what order:
 
-1. **Analyze intent** — Classifies whether the query needs document search, general knowledge, or casual response
-2. **Search** — Hybrid vector + BM25 search across your indexed documents, with optional web fallback
-3. **Evaluate** — Checks if retrieved context is sufficient; rewrites query and retries if not (up to 3 retries)
-4. **Generate** — Produces a final answer with source citations (`[p. X]`, `[r. X]`, `[doc]`, `[web]`)
+1. **Search documents** — Hybrid vector + BM25 search across your indexed documents
+2. **Search web** — DuckDuckGo fallback for external information
+3. **Generate** — Produces a final answer with source citations (`[p. X]`, `[r. X]`, `[doc]`, `[web]`)
 
-All of this runs through a custom while-true agent loop (replaced the old LangGraph pipeline). The LLM has access to 5 tool functions and decides per-turn whether to call a tool or respond directly.
+On the `agentic` branch, three additional tools enable workspace artifact production:
+`read_document`, `write_document`, and `list_documents`.
+
+All of this runs through a custom while-true agent loop (replacing the old LangGraph pipeline). The LLM has access to tool functions and decides per-turn whether to call a tool or respond directly.
 
 ### Running Modes
 
@@ -47,6 +55,8 @@ All of this runs through a custom while-true agent loop (replaced the old LangGr
 | Detection | `MemTotal > 1.5GB` or no `RENDER` env | `RENDER=true` or `< 1.5GB` |
 
 Both modes produce 384-dimensional vectors.
+
+---
 
 ## Architecture
 
@@ -71,11 +81,11 @@ flowchart TD
         AL[Agent Loop<br>while-true LLM→tool→loop]
 
         subgraph Tools["Tool Registry"]
-            AI["analyze_intent"]
-            VS["vector_search"]
-            WS["web_search"]
-            ER["evaluate_retrieval"]
-            RQ["rewrite_query"]
+            SD["search_documents"]
+            SW["search_web"]
+            RD["read_document"]
+            WD["write_document"]
+            LD["list_documents"]
         end
 
         Rate[Rate Limiter<br>8 req/min per user]
@@ -85,6 +95,7 @@ flowchart TD
     subgraph DB [PostgreSQL + pgvector]
         Threads[threads]
         Chunks[prose_chunks<br>384-dim vectors]
+        Artifacts[workspace_artifacts]
     end
 
     subgraph External [External APIs]
@@ -101,30 +112,40 @@ flowchart TD
     Comp <-->|REST| Backend
 
     Rate --> AL
-    AL --> AI & VS & WS & ER & RQ
-    VS --> Chunks
-    WS --> DuckDuckGo
+    AL --> SD & SW & RD & WD & LD
+    SD --> Chunks
+    SW --> DuckDuckGo
 
     Backend --> SB
     Backend --> DB
     Backend --> Groq
 
-    VS ---> FastEmbed
-    VS -.->|fallback| Gemini
+    SD ---> FastEmbed
+    SD -.->|fallback| Gemini
 ```
 
-## v5.0 Changes (agentic branch)
+---
 
-| Before (v4.0) | After (v5.0) |
-|---|---|
-| LangGraph StateGraph with hardcoded DAG | Custom while-true agent loop |
-| 6 fixed pipeline nodes | 5 @tool functions, LLM decides flow |
-| Monolith page.tsx (2000+ lines) | 20+ decomposed components |
-| CSS in-page with tailwind classes | shadcn/ui v4 with dark design system |
-| No per-user rate limiting | 8 req/min per user on /chat/stream |
-| No message editing | Slash commands + edit button |
-| No projects or search | ProjectSelector + SearchChat |
-| Desktop-only sidebar | Mobile-responsive overlay |
+## Branches
+
+### `main` — v4 (Stable Research Engine)
+
+The production-deployed version.
+- LangGraph-based RAG pipeline (legacy, replaced in v5)
+- Upload PDFs, chat with documents, get cited answers
+- Deployed on Render + Vercel
+
+### `agentic` — v5 (Experimental Workspace Agent)
+
+Active development branch.
+- Custom while-true agent loop (no LangGraph)
+- `@tool` decorator registry with 5 tools
+- Provider-agnostic LLM layer (Groq, OpenAI, Together, Gemini)
+- Persistent workspace artifacts — agent writes `analysis/`, `plans/`, `decisions/`
+- Tool invocation logging
+- Subject to rebasing and API changes
+
+---
 
 ## Testing
 
@@ -136,8 +157,11 @@ python tests/test_rigorous.py     # Full sweep
 python eval/ragas_eval.py         # RAGAS metrics
 ```
 
+---
+
 ## Learn More
 
 - [Deployment guide](docs/deployment.md) — Render, Vercel, Supabase setup
 - [API reference](docs/api.md) — endpoint table with request/response examples
 - [Agent architecture](AGENTS.md) — agent loop design, tool registry, reference research
+- [Workspace experiment](codex-backend/docs/workspace-experiment.md) — v5 artifact production hypothesis and results
