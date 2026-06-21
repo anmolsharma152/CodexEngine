@@ -75,4 +75,18 @@ def ensure_schema():
             );
         """))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_workspace_artifacts_project ON workspace_artifacts (project_id, path);"))
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS tool_invocations (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                thread_id VARCHAR(255) NOT NULL,
+                user_id UUID NOT NULL,
+                tool_name VARCHAR(255) NOT NULL,
+                arguments JSONB,
+                result TEXT,
+                error TEXT,
+                duration_ms INTEGER,
+                created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+            );
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_tool_invocations_thread ON tool_invocations (thread_id, created_at);"))
         conn.commit()

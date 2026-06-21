@@ -6,9 +6,13 @@ Tool definitions go in the API call, not the system prompt.
 """
 
 import json
+import time
+import uuid
 
+from sqlalchemy import text
 from src.llm import create_provider, ToolCall
 from src.agent.tool_registry import get_registry
+from src.db import async_engine
 from src.log_utils import logger
 
 MAX_ITERATIONS = 10
@@ -68,14 +72,39 @@ async def agent_loop(
 
                 yield json.dumps({"type": "tool_call", "content": {"name": tc.name, "args": args}})
 
+                t0 = time.time()
+                error: str | None = None
                 try:
                     fn_result = await registry.execute(tc.name, **args)
+                    duration = int((time.time() - t0) * 1000)
                     result_str = str(fn_result) if not isinstance(fn_result, str) else fn_result
                     yield json.dumps({"type": "tool_result", "content": {"name": tc.name, "result": result_str[:500]}})
                 except Exception as e:
+                    duration = int((time.time() - t0) * 1000)
                     result_str = f"Error: {e}"
+                    error = str(e)
                     logger.error(f"Tool {tc.name} failed: {e}")
                     yield json.dumps({"type": "tool_result", "content": {"name": tc.name, "error": str(e)}})
+
+                try:
+                    sql = text("""
+                        INSERT INTO tool_invocations (id, thread_id, user_id, tool_name, arguments, result, error, duration_ms)
+                        VALUES (:id, :thread_id, :user_id, :tool_name, :arguments, :result, :error, :duration_ms);
+                    """)
+                    async with async_engine.connect() as conn:
+                        await conn.execute(sql, {
+                            "id": str(uuid.uuid4()),
+                            "thread_id": thread_id,
+                            "user_id": user_id,
+                            "tool_name": tc.name,
+                            "arguments": json.dumps(args),
+                            "result": result_str,
+                            "error": error,
+                            "duration_ms": duration,
+                        })
+                        await conn.commit()
+                except Exception as log_err:
+                    logger.error(f"Failed to log tool invocation: {log_err}")
 
                 lc.append({
                     "role": "assistant",
