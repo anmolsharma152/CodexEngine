@@ -190,3 +190,17 @@ async def write_document(path: str, content: str, project_id: str = "", artifact
         await conn.execute(sql, {"id": str(uuid.uuid4()), "project_id": project_id, "path": path, "content": content, "artifact_type": artifact_type})
         await conn.commit()
     return f"Written to {path}."
+
+
+@tool
+async def list_documents(project_id: str = "", pattern: str = "%") -> str:
+    """List workspace artifacts. Optionally filter by path pattern (SQL LIKE)."""
+    logger.info(f"List documents: project={project_id} pattern={pattern}")
+    sql = text("SELECT path, artifact_type, updated_at FROM workspace_artifacts WHERE project_id = :project_id AND path LIKE :pattern ORDER BY path;")
+    async with async_engine.connect() as conn:
+        res = await conn.execute(sql, {"project_id": project_id, "pattern": pattern})
+        rows = res.fetchall()
+        if not rows:
+            return "No artifacts found."
+        lines = [f"{r[0]} ({r[1]}, updated {r[2]})" for r in rows]
+        return "\n".join(lines)
