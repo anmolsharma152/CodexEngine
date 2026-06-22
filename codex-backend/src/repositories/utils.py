@@ -62,8 +62,17 @@ class GeminiEmbeddingWrapper:
                         break  # Success, exit retry loop
                     except httpx.HTTPStatusError as e:
                         if e.response.status_code == 429 and attempt < max_retries - 1:
-                            logger.warning(f"Gemini 429 Too Many Requests. Retrying in {10 * (attempt + 1)} seconds...")
-                            time.sleep(10 * (attempt + 1))
+                            delay = 60
+                            try:
+                                # Try to parse "retryDelay": "57s" from the Google RPC error details
+                                err_data = e.response.json()
+                                for detail in err_data.get("error", {}).get("details", []):
+                                    if "retryDelay" in detail:
+                                        delay = int(detail["retryDelay"].replace("s", "")) + 2
+                            except Exception:
+                                pass
+                            logger.warning(f"Gemini 429 quota reached. Retrying in {delay} seconds...")
+                            time.sleep(delay)
                         else:
                             raise
                             
