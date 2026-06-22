@@ -22,6 +22,7 @@ class GeminiEmbeddingWrapper:
         return f"https://{_GEMINI_BASE}/v1beta/{self._model}:batchEmbedContents?key={key}"
 
     def _embed(self, texts: list[str]) -> list[list[float]]:
+        import time
         try:
             url = self._make_url()
             headers = {"Content-Type": "application/json"}
@@ -29,6 +30,8 @@ class GeminiEmbeddingWrapper:
             
             # Gemini batch limits are 100 requests per batch
             for i in range(0, len(texts), 100):
+                if i > 0:
+                    time.sleep(2.5)  # Avoid 429 Too Many Requests
                 batch_texts = texts[i:i+100]
                 resp = self._client.post(
                     url,
