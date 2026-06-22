@@ -29,20 +29,29 @@ class GeminiEmbeddingWrapper:
     def _make_url(self):
         ip = _resolve_gemini_ipv4()
         key = os.getenv("GOOGLE_API_KEY")
-        return f"https://{ip}/v1beta/{self._model}:embedContent?key={key}"
+        return f"https://{_GEMINI_BASE}/v1beta/{self._model}:batchEmbedContents?key={key}"
 
     def _embed(self, texts: list[str]) -> list[list[float]]:
         try:
-            resp = self._client.post(
-                self._make_url(),
-                headers={"Host": _GEMINI_BASE, "Content-Type": "application/json"},
-                json={
-                    "requests": [{"model": self._model, "content": {"parts": [{"text": t}]}, "outputDimensionality": 384} for t in texts]
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return [e["values"] for e in data.get("embeddings", [])]
+            url = self._make_url()
+            headers = {"Content-Type": "application/json"}
+            all_embeddings = []
+            
+            # Gemini batch limits are 100 requests per batch
+            for i in range(0, len(texts), 100):
+                batch_texts = texts[i:i+100]
+                resp = self._client.post(
+                    url,
+                    headers=headers,
+                    json={
+                        "requests": [{"model": self._model, "content": {"parts": [{"text": t}]}, "outputDimensionality": 384} for t in batch_texts]
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                all_embeddings.extend([e["values"] for e in data.get("embeddings", [])])
+                
+            return all_embeddings
         except Exception as e:
             logger.error(f"Gemini embedding failed: {e}")
             raise
