@@ -78,10 +78,10 @@ async def list_files(bucket: str, prefix: str, auth_token: str | None = None) ->
 
 
 async def remove_files(bucket: str, paths: list[str], auth_token: str | None = None) -> None:
-    url = f"{_SUPABASE_URL}/storage/v1/object/{bucket}/remove"
+    url = f"{_SUPABASE_URL}/storage/v1/object/{bucket}"
     async with httpx.AsyncClient(timeout=30) as client:
         try:
-            resp = await client.post(url, headers=_auth_headers(auth_token), json={"prefixes": paths})
+            resp = await client.request("DELETE", url, headers=_auth_headers(auth_token), json={"prefixes": paths})
             resp.raise_for_status()
         except httpx.HTTPStatusError:
             logger.error(f"Storage remove failed for {bucket}/{paths}: status={resp.status_code} body={resp.text}")
