@@ -143,12 +143,69 @@ async def _remove_storage_paths(paths: list[str], auth_token: str | None = None)
         logger.error(f"Failed to remove storage paths {paths}: {e}")
 
 
+class IngestionQueue:
+    def __init__(self):
+        self.queue = asyncio.Queue()
+        self.jobs = {}  # storage_path -> status
+
+    async def enqueue(self, storage_path, safe_filename, user_id, auth_token):
+        self.jobs[storage_path] = "Queued"
+        await self.queue.put({
+            "storage_path": storage_path,
+            "filename": safe_filename,
+            "user_id": user_id,
+            "auth_token": auth_token
+        })
+
+    def cancel(self, storage_path):
+        if self.jobs.get(storage_path) in ["Queued", "Processing"]:
+            self.jobs[storage_path] = "Cancelled"
+
+    async def worker(self):
+        while True:
+            job = await self.queue.get()
+            storage_path = job["storage_path"]
+            
+            if self.jobs.get(storage_path) == "Cancelled":
+                self.queue.task_done()
+                continue
+                
+            self.jobs[storage_path] = "Processing"
+            try:
+                tmp_path = await _download_from_storage(storage_path, auth_token=job["auth_token"])
+                if not tmp_path:
+                    raise RuntimeError("Failed to retrieve uploaded file for ingestion")
+                    
+                # Check cancellation again before slow ingestion
+                if self.jobs.get(storage_path) == "Cancelled":
+                    os.unlink(tmp_path)
+                    self.queue.task_done()
+                    continue
+
+                renamed = os.path.join(os.path.dirname(tmp_path), job["filename"])
+                os.rename(tmp_path, renamed)
+                
+                await asyncio.to_thread(ingest_file, renamed, None, job["user_id"])
+                os.unlink(renamed)
+                
+                if self.jobs.get(storage_path) != "Cancelled":
+                    self.jobs[storage_path] = "Completed"
+                    logger.info(f"Ingestion queue processed: {job['filename']}")
+            except Exception as e:
+                logger.error(f"Queue ingestion failed for {storage_path}: {e}")
+                self.jobs[storage_path] = f"Failed: {e}"
+            finally:
+                self.queue.task_done()
+
+ingestion_queue = IngestionQueue()
 # Lifespan
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.ingestion_worker = asyncio.create_task(ingestion_queue.worker())
     await storage_client.ensure_bucket(STORAGE_BUCKET)
     logger.info("Engine ready")
     yield
+    app.state.ingestion_worker.cancel()
 
 
 app = FastAPI(title="CodexEngine", lifespan=lifespan)
@@ -341,23 +398,9 @@ async def upload_document(file: UploadFile = File(...), current_user=Depends(get
     safe_filename = file.filename.replace(" ", "_")
     storage_path = _storage_path(current_user.id, safe_filename)
     await storage_client.upload_file(STORAGE_BUCKET, storage_path, raw, file.content_type, auth_token=current_user.token)
-    try:
-        tmp_path = await _download_from_storage(storage_path, auth_token=current_user.token)
-        if not tmp_path:
-            raise RuntimeError("Failed to retrieve uploaded file for ingestion")
-        renamed = os.path.join(os.path.dirname(tmp_path), safe_filename)
-        os.rename(tmp_path, renamed)
-        await asyncio.to_thread(ingest_file, renamed, None, current_user.id)
-        os.unlink(renamed)
-        logger.info(f"Uploaded and ingested: {safe_filename}")
-        return JSONResponse(status_code=200, content={"message": f"Successfully uploaded and ingested {safe_filename}"})
-    except Exception as e:
-        logger.error(f"Ingestion failed, cleaning up storage file: {e}")
-        try:
-            await storage_client.remove_files(STORAGE_BUCKET, [storage_path], auth_token=current_user.token)
-        except Exception:
-            logger.error(f"Cleanup also failed for storage path: {storage_path}")
-        return JSONResponse(status_code=500, content={"message": str(e)})
+    
+    await ingestion_queue.enqueue(storage_path, safe_filename, current_user.id, current_user.token)
+    return JSONResponse(status_code=202, content={"message": f"Successfully uploaded and queued {safe_filename}", "status": "queued"})
 
 
 @app.get("/documents")
@@ -384,11 +427,20 @@ async def list_documents_endpoint(current_user=Depends(get_current_user)):
             basename = parts[-1]
             thread_id = parts[0] if len(parts) > 1 and parts[0] != parts[-1] else None
 
+            status = "Ingested" if basename in db_counts else "Pending"
+            
+            storage_path_for_status = _storage_path(str(current_user.id), basename, thread_id)
+            queue_status = ingestion_queue.jobs.get(storage_path_for_status)
+            if queue_status:
+                status = queue_status
+                if status == "Completed":
+                    status = "Ingested"
+
             merged.append({
                 "filename": basename,
                 "size_bytes": sf["size_bytes"],
                 "chunks_count": db_counts.get(basename, 0),
-                "status": "Ingested" if basename in db_counts else "Pending",
+                "status": status,
                 "thread_id": thread_id,
             })
 
@@ -410,6 +462,8 @@ async def delete_document_endpoint(filename: str, thread_id: str = None, current
             storage_path = _storage_path(current_user.id, filename, thread_id)
         else:
             storage_path = _storage_path(current_user.id, filename)
+            
+        ingestion_queue.cancel(storage_path)
 
         await _remove_storage_paths([storage_path], auth_token=current_user.token)
 
