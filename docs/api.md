@@ -96,7 +96,7 @@ Content-Type: multipart/form-data
 
 file: <pdf/txt/csv>
 
-→ 200 {"message": "Successfully uploaded and ingested file.pdf"}
+→ 202 {"message": "File uploaded to storage and queued for background ingestion.", "filename": "file.pdf"}
 ```
 
 ```
