@@ -100,9 +100,10 @@ STORAGE_BUCKET = "documents"
 
 
 def _storage_path(user_id: str, filename: str, thread_id: str | None = None) -> str:
+    safe_filename = filename.replace(" ", "_")
     if thread_id:
-        return f"{user_id}/{thread_id}/{filename}"
-    return f"{user_id}/{filename}"
+        return f"{user_id}/{thread_id}/{safe_filename}"
+    return f"{user_id}/{safe_filename}"
 
 
 async def _download_from_storage(storage_path: str, auth_token: str | None = None) -> str | None:
@@ -337,18 +338,19 @@ async def chat_history_endpoint(thread_id: str, current_user=Depends(get_current
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...), current_user=Depends(get_current_user)):
     raw = await file.read()
-    storage_path = _storage_path(current_user.id, file.filename)
+    safe_filename = file.filename.replace(" ", "_")
+    storage_path = _storage_path(current_user.id, safe_filename)
     await storage_client.upload_file(STORAGE_BUCKET, storage_path, raw, file.content_type, auth_token=current_user.token)
     try:
         tmp_path = await _download_from_storage(storage_path, auth_token=current_user.token)
         if not tmp_path:
             raise RuntimeError("Failed to retrieve uploaded file for ingestion")
-        renamed = os.path.join(os.path.dirname(tmp_path), file.filename)
+        renamed = os.path.join(os.path.dirname(tmp_path), safe_filename)
         os.rename(tmp_path, renamed)
         await asyncio.to_thread(ingest_file, renamed, None, current_user.id)
         os.unlink(renamed)
-        logger.info(f"Uploaded and ingested: {file.filename}")
-        return JSONResponse(status_code=200, content={"message": f"Successfully uploaded and ingested {file.filename}"})
+        logger.info(f"Uploaded and ingested: {safe_filename}")
+        return JSONResponse(status_code=200, content={"message": f"Successfully uploaded and ingested {safe_filename}"})
     except Exception as e:
         logger.error(f"Ingestion failed, cleaning up storage file: {e}")
         try:
@@ -462,19 +464,20 @@ async def upload_temporal_document(thread_id: str, file: UploadFile = File(...),
     try:
         await verify_thread_ownership(thread_id, current_user.id)
         raw = await file.read()
-        storage_path = _storage_path(current_user.id, file.filename, thread_id)
+        safe_filename = file.filename.replace(" ", "_")
+        storage_path = _storage_path(current_user.id, safe_filename, thread_id)
         await storage_client.upload_file(STORAGE_BUCKET, storage_path, raw, file.content_type, auth_token=current_user.token)
 
         tmp_path = await _download_from_storage(storage_path, auth_token=current_user.token)
         if not tmp_path:
             return JSONResponse(status_code=500, content={"message": "Failed to retrieve uploaded file for ingestion"})
-        renamed = os.path.join(os.path.dirname(tmp_path), file.filename)
+        renamed = os.path.join(os.path.dirname(tmp_path), safe_filename)
         os.rename(tmp_path, renamed)
         await asyncio.to_thread(ingest_file, renamed, thread_id, current_user.id)
         os.unlink(renamed)
 
-        logger.info(f"Temporal upload: {file.filename} for thread: {thread_id}")
-        return JSONResponse(status_code=200, content={"message": f"Successfully uploaded and ingested {file.filename} temporally"})
+        logger.info(f"Temporal upload: {safe_filename} for thread: {thread_id}")
+        return JSONResponse(status_code=200, content={"message": f"Successfully uploaded and ingested {safe_filename} temporally"})
     except Exception as e:
         logger.error(f"Temporal upload failed: {e}")
         return JSONResponse(status_code=500, content={"message": str(e)})
