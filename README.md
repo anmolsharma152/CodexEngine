@@ -116,18 +116,25 @@ flowchart TD
 
     subgraph Backend [codex-backend — FastAPI]
         direction LR
-        R[1. Router] --> C[2. Condenser] --> Ret[3. Retriever]
+        
+        %% Graph Flow
+        R[1. Router] -->|retrieval_required| C[2. Condenser]
+        R -->|direct/meta| A[6. Actor]
+        C --> Ret[3. Retriever]
         Ret --> E[4. Evaluator]
-        E -->|loop ≤3x| RW[5. Rewriter]
+        E -->|retry_needed| RW[5. Rewriter]
         RW --> Ret
-        E --> A[6. Actor]
+        E -->|sufficient: False| WS[Web Search Fallback]
+        E -->|sufficient: True| A
+        WS --> A
         A --> Resp[SSE Response]
 
-        subgraph Retrieval [Hybrid Retrieval]
-            VEC[Vector Search]
-            BM[BM25 Keyword]
-            WEB[DuckDuckGo<br>Web Fallback]
-            Fuse[Fusion + Rerank]
+        %% Ingestion Flow
+        subgraph Ingestion [Background Ingestion]
+            Q[(asyncio.Queue)]
+            Worker[Worker Task]
+            Q --> Worker
+            Worker -->|Chunk & Embed| DB
         end
     end
 
@@ -147,18 +154,13 @@ flowchart TD
     SA -.->|JWT session| SupaSDK
     SupaSDK --> Backend
     ChatUI <-->|SSE stream| Backend
-    DocMgr <-->|upload / list / delete| Backend
-
-    Backend --> SB
+    DocMgr -->|upload to| SB
+    DocMgr -->|enqueue| Q
+    
     Backend --> DB
-    Ret --> VEC
-    Ret --> BM
-    Ret --> WEB
-    VEC & BM & WEB --> Fuse
-    Fuse --> Ret
-
-    VEC ---> FastEmbed
-    VEC -.->|fallback| Gemini
+    
+    Ret ---> FastEmbed
+    Ret -.->|fallback| Gemini
     Backend ---> Groq
 ```
 
