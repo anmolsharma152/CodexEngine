@@ -41,19 +41,32 @@ class GeminiEmbeddingWrapper:
             # Gemini batch limits are 100 requests per batch
             for i in range(0, len(texts), 100):
                 if i > 0:
-                    time.sleep(2.5)  # Avoid 429 Too Many Requests
+                    time.sleep(4)  # Base delay for 15 RPM limit
+                    
                 batch_texts = texts[i:i+100]
-                resp = self._client.post(
-                    url,
-                    headers=headers,
-                    json={
-                        "requests": [{"model": self._model, "content": {"parts": [{"text": t}]}, "outputDimensionality": 384} for t in batch_texts]
-                    },
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                all_embeddings.extend([e["values"] for e in data.get("embeddings", [])])
                 
+                # Retry logic for 429 Too Many Requests
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        resp = self._client.post(
+                            url,
+                            headers=headers,
+                            json={
+                                "requests": [{"model": self._model, "content": {"parts": [{"text": t}]}, "outputDimensionality": 384} for t in batch_texts]
+                            },
+                        )
+                        resp.raise_for_status()
+                        data = resp.json()
+                        all_embeddings.extend([e["values"] for e in data.get("embeddings", [])])
+                        break  # Success, exit retry loop
+                    except httpx.HTTPStatusError as e:
+                        if e.response.status_code == 429 and attempt < max_retries - 1:
+                            logger.warning(f"Gemini 429 Too Many Requests. Retrying in {10 * (attempt + 1)} seconds...")
+                            time.sleep(10 * (attempt + 1))
+                        else:
+                            raise
+                            
             return all_embeddings
         except Exception as e:
             logger.error(f"Gemini embedding failed: {e}")
