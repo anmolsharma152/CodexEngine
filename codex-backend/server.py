@@ -139,6 +139,19 @@ def create_graph(checkpointer):
     workflow.add_node("condense", condense_question_node)
     workflow.add_node("retrieve", retrieve_hybrid_context)
     workflow.add_node("evaluate", evaluate_retrieval)
+    
+    async def web_search_node(state: AgentState):
+        from src.nodes.retriever import _web_search, _format_chunks
+        from src.log_utils import logger
+        import asyncio
+        logger.info("Local chunks are insufficient. Executing DuckDuckGo fallback.")
+        web_docs = await _web_search(state["search_query"])
+        if web_docs:
+            context = await asyncio.to_thread(_format_chunks, web_docs)
+            return {"context": context}
+        return {"context": state["context"]}
+
+    workflow.add_node("web_search", web_search_node)
     workflow.add_node("rewrite", rewrite_query)
     workflow.add_node("actor", generate_answer)
     workflow.add_edge(START, "router")
@@ -154,8 +167,9 @@ def create_graph(checkpointer):
     workflow.add_edge("condense", "retrieve")
     workflow.add_edge("retrieve", "evaluate")
     workflow.add_conditional_edges(
-        "evaluate", lambda x: x["next_step"], {"actor": "actor", "rewrite": "rewrite"}
+        "evaluate", lambda x: x["next_step"], {"actor": "actor", "rewrite": "rewrite", "web_search": "web_search"}
     )
+    workflow.add_edge("web_search", "actor")
     workflow.add_edge("rewrite", "retrieve")
     workflow.add_edge("actor", END)
     return workflow.compile(checkpointer=checkpointer)

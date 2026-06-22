@@ -71,6 +71,8 @@ async def evaluate_retrieval(state: AgentState):
 
     if evaluation.get("retry_needed") and state["revision_count"] < 3:
         next_step = "rewrite"
+    elif not evaluation.get("sufficient"):
+        next_step = "web_search"
     else:
         next_step = "actor"
 
