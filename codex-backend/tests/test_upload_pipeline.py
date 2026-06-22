@@ -59,6 +59,8 @@ def _mock_httpx_client(resp_status=200, resp_body="{}", resp_json=None):
 
     mock_instance = MagicMock()
     mock_instance.post = AsyncMock(return_value=mock_resp)
+    mock_instance.request = AsyncMock(return_value=mock_resp)
+    mock_instance.get = AsyncMock(return_value=mock_resp)
     mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
     mock_instance.__aexit__ = AsyncMock(return_value=False)
     return mock_instance
