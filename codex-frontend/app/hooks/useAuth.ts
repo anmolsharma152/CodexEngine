@@ -113,9 +113,17 @@ export function useAuth() {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error || !data.session) throw new Error(error?.message || "Login failed");
         const newToken = data.session.access_token;
-        const meRes = await fetch(`${API_BASE}/user/me`, {
-          headers: { Authorization: `Bearer ${newToken}` },
-        });
+        let meRes;
+        try {
+          meRes = await fetch(`${API_BASE}/user/me`, {
+            headers: { Authorization: `Bearer ${newToken}` },
+          });
+        } catch (fetchErr: any) {
+          if (fetchErr instanceof TypeError || fetchErr.message.includes("fetch") || fetchErr.message.includes("NetworkError")) {
+            throw new Error("Backend engine is waking up from sleep mode (this takes ~50s). Please hold tight and try logging in again.");
+          }
+          throw fetchErr;
+        }
         const meData = await meRes.json();
         persistToken(newToken, meData.username || meData.email);
         setAuthEmail("");
