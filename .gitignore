@@ -49,3 +49,6 @@ CLAUDE.md
 # Stale pre-rename directory
 codex-ui/
 .langsmith*
+
+# Antigravity logs
+docs/antigravity*.md
