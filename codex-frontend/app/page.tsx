@@ -166,9 +166,17 @@ export default function Home() {
         if (error || !data.session) throw new Error(error?.message || "Login failed");
 
         const token = data.session.access_token;
-        const meRes = await fetch(`${API_BASE}/user/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        let meRes;
+        try {
+          meRes = await fetch(`${API_BASE}/user/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        } catch (fetchErr: any) {
+          if (fetchErr instanceof TypeError || fetchErr.message.includes("fetch") || fetchErr.message.includes("NetworkError")) {
+            throw new Error("Backend engine is waking up from sleep mode (this takes ~50s). Please hold tight and try logging in again.");
+          }
+          throw fetchErr;
+        }
         const meData = await meRes.json();
 
         setToken(token);

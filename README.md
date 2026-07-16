@@ -44,8 +44,6 @@ Most document assistants answer a question and immediately forget the work they 
 
 CodexEngine started as a retrieval-augmented research system and is evolving into an experiment around persistent AI workspaces, where analysis, reports, and findings can become reusable knowledge objects.
 
-CodexEngine began as a retrieval-first research engine and is now being used to explore persistent AI workspaces.
-
 ## Branches
 
 | Branch    | Status       | Purpose                                     |
@@ -178,14 +176,3 @@ python eval/ragas_eval.py         # RAGAS metrics
 
 - [Deployment guide](docs/deployment.md) — Render, Vercel, Supabase setup
 - [API reference](docs/api.md) — endpoint table with request/response examples
-
-## Technical Highlights
-
-- FastAPI backend
-- Next.js frontend
-- PostgreSQL + pgvector
-- Hybrid retrieval (vector + BM25)
-- Server-sent events (SSE) streaming
-- Supabase authentication and storage
-- Provider-agnostic LLM architecture
-- Workspace-agent experimentation (v5)

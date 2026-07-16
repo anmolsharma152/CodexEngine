@@ -1,0 +1,20 @@
+name: Keep Alive
+
+on:
+  schedule:
+    - cron: '*/14 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping_services:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          curl -s -X GET "${{ secrets.SUPABASE_URL }}/rest/v1/threads?select=id&limit=1" \
+               -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+               -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" > /dev/null
+
+      - name: Ping Render Backend Health Check
+        run: |
+          curl -s "${{ secrets.RENDER_BACKEND_URL }}" > /dev/null
