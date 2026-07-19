@@ -2,6 +2,18 @@
 
 A self-hosted document intelligence platform that lets you upload documents, ask questions, and get answers backed by source citations.
 
+
+## Docs (handoff)
+
+| Doc | Purpose |
+|-----|---------|
+| **[docs/STATUS.md](./docs/STATUS.md)** | Handoff — what this tree is |
+| [docs/setup.md](./docs/setup.md) | Setup pointers |
+| [AGENTS.md](./AGENTS.md) | Agent guidance |
+| [docs/deployment.md](./docs/deployment.md) | Deploy (if present) |
+
+> **Local folder note:** this checkout may live under `~/Projects/CodexEngine Demo V2.5` but tracks `anmolsharma152/CodexEngine` — same as `~/Projects/CodexEngine` (use `agentic` for v5).
+
 The project currently has two tracks:
 
 - v4: a stable retrieval-first research engine
