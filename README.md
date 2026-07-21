@@ -2,14 +2,7 @@
 
 > **Status:** Experimental — Active Development — Not Production-Ready
 
-## Docs (start here)
 
-| Doc | Purpose |
-|-----|---------|
-| **[docs/STATUS.md](./docs/STATUS.md)** | Handoff — v5 agentic status |
-| [docs/setup.md](./docs/setup.md) | Env / stack overview |
-| [docs/deployment.md](./docs/deployment.md) | Deploy notes |
-| [AGENTS.md](./AGENTS.md) | Agent loop architecture for coding agents |
 
 CodexEngine v5 is an experimental evolution of the v4 research engine.
 The agent doesn't just answer questions — it can create persistent
