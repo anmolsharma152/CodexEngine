@@ -34,16 +34,21 @@ def _vector_search(query_emb: list[float], thread_id: str | None, user_id_str: s
         return docs
 
 
-def _bm25_search(query_text: str) -> list[dict]:
+def _bm25_search(query_text: str, user_id_str: str) -> list[dict]:
     try:
         bm25, corpus, metadatas, doc_ids = get_bm25_index()
         tokenized_query = tokenize(query_text)
         scores = bm25.get_scores(tokenized_query)
-        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:BM25_TOP_K]
+        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
         docs = []
         for idx in top_indices:
             if scores[idx] > 0:
-                docs.append({"content": corpus[idx], "metadata": dict(metadatas[idx]), "score": float(scores[idx]), "source": "bm25"})
+                meta = dict(metadatas[idx])
+                doc_user = meta.get("user_id")
+                if not doc_user or doc_user == user_id_str:
+                    docs.append({"content": corpus[idx], "metadata": meta, "score": float(scores[idx]), "source": "bm25"})
+                    if len(docs) >= BM25_TOP_K:
+                        break
         return docs
     except Exception as e:
         logger.error(f"BM25 search failed: {e}")
@@ -137,7 +142,7 @@ async def retrieve_hybrid_context(state: AgentState, config=None):
         logger.warning(f"Vector embedding failed, falling back to BM25-only: {e}")
         vector_docs = []
 
-    bm25_docs = await asyncio.to_thread(_bm25_search, current_search)
+    bm25_docs = await asyncio.to_thread(_bm25_search, current_search, user_id_str)
 
     all_candidates = await asyncio.to_thread(_deduplicate, vector_docs + bm25_docs)
 
