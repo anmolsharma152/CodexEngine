@@ -89,4 +89,12 @@ def ensure_schema():
             );
         """))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_tool_invocations_thread ON tool_invocations (thread_id, created_at);"))
+        
+        # Security: Enable Row Level Security (RLS) to block public API access
+        conn.execute(text("ALTER TABLE threads ENABLE ROW LEVEL SECURITY;"))
+        conn.execute(text("ALTER TABLE prose_chunks ENABLE ROW LEVEL SECURITY;"))
+        conn.execute(text("ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;"))
+        conn.execute(text("ALTER TABLE workspace_artifacts ENABLE ROW LEVEL SECURITY;"))
+        conn.execute(text("ALTER TABLE tool_invocations ENABLE ROW LEVEL SECURITY;"))
+        
         conn.commit()

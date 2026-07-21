@@ -32,6 +32,48 @@ CREATE INDEX IF NOT EXISTS idx_prose_chunks_metadata ON prose_chunks USING GIN (
 
 CREATE INDEX IF NOT EXISTS idx_threads_user_id ON threads (user_id);
 
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id BIGSERIAL PRIMARY KEY,
+    thread_id VARCHAR(255) NOT NULL,
+    user_id UUID NOT NULL,
+    role VARCHAR(50) NOT NULL,
+    content TEXT,
+    created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_thread ON chat_messages (thread_id, user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS workspace_artifacts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id VARCHAR(255) NOT NULL,
+    path VARCHAR(1024) NOT NULL,
+    content TEXT NOT NULL,
+    artifact_type VARCHAR(50) DEFAULT 'document',
+    created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+    updated_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+    UNIQUE(project_id, path)
+);
+CREATE INDEX IF NOT EXISTS idx_workspace_artifacts_project ON workspace_artifacts (project_id, path);
+
+CREATE TABLE IF NOT EXISTS tool_invocations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    thread_id VARCHAR(255) NOT NULL,
+    user_id UUID NOT NULL,
+    tool_name VARCHAR(255) NOT NULL,
+    arguments JSONB,
+    result TEXT,
+    error TEXT,
+    duration_ms INTEGER,
+    created_at BIGINT DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_tool_invocations_thread ON tool_invocations (thread_id, created_at);
+
+-- Security: Enable Row Level Security (RLS) to block public API access
+ALTER TABLE threads ENABLE ROW LEVEL SECURITY;
+ALTER TABLE prose_chunks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workspace_artifacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tool_invocations ENABLE ROW LEVEL SECURITY;
+
 -- Storage: create the 'documents' bucket (idempotent, skipped if not on Supabase)
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'storage' AND table_name = 'buckets') THEN
