@@ -74,8 +74,13 @@ async def agent_loop(
                 except json.JSONDecodeError:
                     args = {}
 
-                if tc.name in _WORKSPACE_TOOLS and "project_id" not in args:
-                    args["project_id"] = project_id
+                if tc.name in _WORKSPACE_TOOLS:
+                    if "project_id" not in args:
+                        args["project_id"] = project_id
+                    args["user_id"] = user_id
+                elif tc.name == "search_documents":
+                    args["user_id"] = user_id
+                    args["thread_id"] = thread_id
 
                 yield json.dumps({"type": "tool_call", "content": {"name": tc.name, "args": args}})
 

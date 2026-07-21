@@ -43,16 +43,22 @@ async def _vector_search(query_emb: list[float], thread_id: str | None, user_id_
         return docs
 
 
-def _bm25_search(query_text: str) -> list[dict]:
+def _bm25_search(query_text: str, user_id_str: str) -> list[dict]:
     try:
         bm25, corpus, metadatas, doc_ids = get_bm25_index()
         tokenized_query = tokenize(query_text)
         scores = bm25.get_scores(tokenized_query)
-        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:BM25_TOP_K]
+        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
         docs = []
         for idx in top_indices:
             if scores[idx] > 0:
-                docs.append({"content": corpus[idx], "metadata": dict(metadatas[idx]), "score": float(scores[idx]), "source": "bm25"})
+                meta = dict(metadatas[idx])
+                # Filter by user_id to prevent IDOR leak
+                doc_user = meta.get("user_id")
+                if not doc_user or doc_user == user_id_str:
+                    docs.append({"content": corpus[idx], "metadata": meta, "score": float(scores[idx]), "source": "bm25"})
+                    if len(docs) >= BM25_TOP_K:
+                        break
         return docs
     except Exception as e:
         logger.error(f"BM25 search failed: {e}")
@@ -120,7 +126,7 @@ async def search_documents(query: str, thread_id: str = "", user_id: str = "") -
         logger.warning(f"Vector embedding failed, falling back to BM25-only: {e}")
         vector_docs = []
 
-    bm25_docs = await asyncio.to_thread(_bm25_search, query)
+    bm25_docs = await asyncio.to_thread(_bm25_search, query, user_id or "")
     all_candidates = await asyncio.to_thread(_deduplicate, vector_docs + bm25_docs)
 
     if not all_candidates:
@@ -159,10 +165,10 @@ async def search_web(query: str) -> str:
 @tool
 async def read_document(path: str, project_id: str = "", user_id: str = "") -> str:
     """Read a workspace artifact by path. Returns the full content."""
-    logger.info(f"Read document: {path} project={project_id}")
-    sql = text("SELECT content FROM workspace_artifacts WHERE path = :path AND project_id = :project_id;")
+    logger.info(f"Read document: {path} project={project_id} user={user_id}")
+    sql = text("SELECT content FROM workspace_artifacts WHERE path = :path AND project_id = :project_id AND user_id = :user_id;")
     async with async_engine.connect() as conn:
-        res = await conn.execute(sql, {"path": path, "project_id": project_id})
+        res = await conn.execute(sql, {"path": path, "project_id": project_id, "user_id": user_id})
         row = res.fetchone()
         if not row:
             return f"Error: no artifact found at '{path}' in this project."
@@ -173,32 +179,32 @@ _RESERVED_PATHS = {"memory/workspace-state.json"}
 
 
 @tool
-async def write_document(path: str, content: str, project_id: str = "", artifact_type: str = "document") -> str:
+async def write_document(path: str, content: str, project_id: str = "", user_id: str = "", artifact_type: str = "document") -> str:
     """Write or overwrite a workspace artifact. Creates a persistent document, note, or analysis that can be read later with read_document."""
     if path in _RESERVED_PATHS and artifact_type != "memory":
         return f"Error: path '{path}' is reserved for system use."
-    logger.info(f"Write document: {path} project={project_id} type={artifact_type}")
+    logger.info(f"Write document: {path} project={project_id} user={user_id} type={artifact_type}")
     sql = text("""
-        INSERT INTO workspace_artifacts (id, project_id, path, content, artifact_type, created_at, updated_at)
-        VALUES (:id, :project_id, :path, :content, :artifact_type, EXTRACT(EPOCH FROM NOW())::BIGINT, EXTRACT(EPOCH FROM NOW())::BIGINT)
-        ON CONFLICT (project_id, path) DO UPDATE SET
+        INSERT INTO workspace_artifacts (id, user_id, project_id, path, content, artifact_type, created_at, updated_at)
+        VALUES (:id, :user_id, :project_id, :path, :content, :artifact_type, EXTRACT(EPOCH FROM NOW())::BIGINT, EXTRACT(EPOCH FROM NOW())::BIGINT)
+        ON CONFLICT (user_id, project_id, path) DO UPDATE SET
             content = :content,
             artifact_type = :artifact_type,
             updated_at = EXTRACT(EPOCH FROM NOW())::BIGINT;
     """)
     async with async_engine.connect() as conn:
-        await conn.execute(sql, {"id": str(uuid.uuid4()), "project_id": project_id, "path": path, "content": content, "artifact_type": artifact_type})
+        await conn.execute(sql, {"id": str(uuid.uuid4()), "user_id": user_id, "project_id": project_id, "path": path, "content": content, "artifact_type": artifact_type})
         await conn.commit()
     return f"Written to {path}."
 
 
 @tool
-async def list_documents(project_id: str = "", pattern: str = "%") -> str:
+async def list_documents(project_id: str = "", user_id: str = "", pattern: str = "%") -> str:
     """List workspace artifacts. Optionally filter by path pattern (SQL LIKE)."""
-    logger.info(f"List documents: project={project_id} pattern={pattern}")
-    sql = text("SELECT path, artifact_type, updated_at FROM workspace_artifacts WHERE project_id = :project_id AND path LIKE :pattern ORDER BY path;")
+    logger.info(f"List documents: project={project_id} user={user_id} pattern={pattern}")
+    sql = text("SELECT path, artifact_type, updated_at FROM workspace_artifacts WHERE project_id = :project_id AND user_id = :user_id AND path LIKE :pattern ORDER BY path;")
     async with async_engine.connect() as conn:
-        res = await conn.execute(sql, {"project_id": project_id, "pattern": pattern})
+        res = await conn.execute(sql, {"project_id": project_id, "user_id": user_id, "pattern": pattern})
         rows = res.fetchall()
         if not rows:
             return "No artifacts found."
