@@ -37,6 +37,8 @@ def _vector_search(query_emb: list[float], thread_id: str | None, user_id_str: s
 def _bm25_search(query_text: str, user_id_str: str) -> list[dict]:
     try:
         bm25, corpus, metadatas, doc_ids = get_bm25_index()
+        if not corpus:
+            return []
         tokenized_query = tokenize(query_text)
         scores = bm25.get_scores(tokenized_query)
         top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
