@@ -44,4 +44,9 @@ def ensure_schema():
         """))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_prose_chunks_metadata ON prose_chunks USING GIN (metadata);"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_threads_user_id ON threads (user_id);"))
+        
+        # Security: Enable Row Level Security (RLS) to block public API access
+        conn.execute(text("ALTER TABLE threads ENABLE ROW LEVEL SECURITY;"))
+        conn.execute(text("ALTER TABLE prose_chunks ENABLE ROW LEVEL SECURITY;"))
+        
         conn.commit()
