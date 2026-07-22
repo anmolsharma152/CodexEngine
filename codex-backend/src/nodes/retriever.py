@@ -90,6 +90,32 @@ def _deduplicate(docs: list[dict]) -> list[dict]:
 
 
 async def _web_search(query_text: str) -> list[dict]:
+    tavily_key = os.getenv("TAVILY_API_KEY")
+
+    if tavily_key:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    "https://api.tavily.com/search",
+                    json={"api_key": tavily_key, "query": query_text, "max_results": 4}
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    docs = [
+                        {
+                            "content": f"Title: {item.get('title', '')}\nSnippet: {item.get('content', '')}\nURL: {item.get('url', '')}",
+                            "metadata": {"source": "web", "title": item.get("title", "")},
+                            "score": 0.5,
+                            "source": "web"
+                        }
+                        for item in data.get("results", [])
+                    ]
+                    logger.info(f"Tavily search returned {len(docs)} results")
+                    return docs
+        except Exception as err:
+            logger.warning(f"Tavily search failed, falling back: {err}")
+
     try:
         from duckduckgo_search import DDGS
 
@@ -102,7 +128,7 @@ async def _web_search(query_text: str) -> list[dict]:
         for r in results:
             content = f"Title: {r.get('title', '')}\nSnippet: {r.get('body', '')}\nURL: {r.get('href', '')}"
             docs.append({"content": content, "metadata": {"source": "web", "title": r.get("title", "")}, "score": 0.5, "source": "web"})
-        logger.info(f"Web search returned {len(docs)} results")
+        logger.info(f"DuckDuckGo search returned {len(docs)} results")
         return docs
     except ImportError:
         logger.warning("duckduckgo_search not installed, skipping web search")
