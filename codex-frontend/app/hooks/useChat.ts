@@ -27,6 +27,8 @@ export function useChat(
   threadId: string,
   systemPrompt?: string,
   projectId?: string,
+  provider?: string,
+  model?: string,
 ) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -107,7 +109,14 @@ export function useChat(
       const response = await authFetch(`${API_BASE}/chat/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage, thread_id: threadId, system_prompt: systemPrompt, project_id: projectId || "default" }),
+        body: JSON.stringify({ 
+          message: userMessage, 
+          thread_id: threadId, 
+          system_prompt: systemPrompt, 
+          project_id: projectId || "default",
+          provider: provider || "groq",
+          model: model || undefined,
+        }),
         signal: controller.signal,
       });
       if (!response.body) throw new Error("No response body");

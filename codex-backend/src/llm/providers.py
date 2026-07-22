@@ -79,6 +79,7 @@ class OpenAICompatible(LLMProvider):
             api_key=api_key or os.getenv("OPENAI_API_KEY"),
             base_url=base_url or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
             max_retries=max_retries,
+            timeout=60.0,
         )
 
     async def complete(
@@ -141,6 +142,9 @@ class OpenAICompatible(LLMProvider):
 _PROVIDERS: dict[str, type[LLMProvider]] = {
     "openai": OpenAICompatible,
     "groq": OpenAICompatible,
+    "gemini": OpenAICompatible,
+    "anthropic": OpenAICompatible,
+    "openrouter": OpenAICompatible,
     "together": OpenAICompatible,
 }
 
@@ -156,9 +160,25 @@ def create_provider(
     if provider in ("groq",):
         cls = _PROVIDERS["groq"]
         return cls(
-            model=model or os.getenv("GROQ_MODEL_NAME", "llama-3.1-8b-instant"),
+            model=model or os.getenv("GROQ_MODEL_NAME", "qwen/qwen3.6-27b"),
             api_key=api_key or os.getenv("GROQ_API_KEY"),
             base_url=base_url or "https://api.groq.com/openai/v1",
+        )
+
+    if provider in ("gemini", "google"):
+        cls = _PROVIDERS["gemini"]
+        return cls(
+            model=model or os.getenv("GEMINI_MODEL_NAME", "gemini-2.0-flash"),
+            api_key=api_key or os.getenv("GEMINI_API_KEY"),
+            base_url=base_url or "https://generativelanguage.googleapis.com/v1beta/openai/",
+        )
+
+    if provider in ("anthropic", "claude"):
+        cls = _PROVIDERS["anthropic"]
+        return cls(
+            model=model or os.getenv("ANTHROPIC_MODEL_NAME", "anthropic/claude-3.5-sonnet"),
+            api_key=api_key or os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENROUTER_API_KEY"),
+            base_url=base_url or os.getenv("ANTHROPIC_BASE_URL", "https://openrouter.ai/api/v1"),
         )
 
     if provider in ("openai",):
@@ -169,10 +189,18 @@ def create_provider(
             base_url=base_url or os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         )
 
+    if provider in ("openrouter",):
+        cls = _PROVIDERS["openrouter"]
+        return cls(
+            model=model or os.getenv("OPENROUTER_MODEL_NAME", "openrouter/free"),
+            api_key=api_key or os.getenv("OPENROUTER_API_KEY"),
+            base_url=base_url or "https://openrouter.ai/api/v1",
+        )
+
     if provider in ("together", "together-ai"):
         cls = _PROVIDERS["together"]
         return cls(
-            model=model or os.getenv("TOGETHER_MODEL_NAME", "mistralai/Mixtral-8x7B-Instruct-v0.1"),
+            model=model or os.getenv("TOGETHER_MODEL_NAME", "Qwen/Qwen2.5-70B-Instruct-Turbo"),
             api_key=api_key or os.getenv("TOGETHER_API_KEY"),
             base_url=base_url or "https://api.together.xyz/v1",
         )

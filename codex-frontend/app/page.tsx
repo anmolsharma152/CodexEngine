@@ -33,7 +33,7 @@ export default function Home() {
 
   const projects = useProjects();
 
-  const chat = useChat(auth.authFetch, docs.documents, sessionFiles, threads.threadId, settings.systemPrompt, projects.activeProjectId);
+  const chat = useChat(auth.authFetch, docs.documents, sessionFiles, threads.threadId, settings.systemPrompt, projects.activeProjectId, settings.provider, settings.model);
 
   const [isMounted, setIsMounted] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -353,8 +353,12 @@ export default function Home() {
         username={auth.username}
         displayName={settings.displayName}
         systemPrompt={settings.systemPrompt}
+        provider={settings.provider}
+        model={settings.model}
         onSaveDisplayName={settings.saveDisplayName}
         onSaveSystemPrompt={settings.saveSystemPrompt}
+        onSaveProvider={settings.saveProvider}
+        onSaveModel={settings.saveModel}
       />
     </div>
   );

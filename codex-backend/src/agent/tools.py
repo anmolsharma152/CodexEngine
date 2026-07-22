@@ -145,6 +145,62 @@ async def search_documents(query: str, thread_id: str = "", user_id: str = "") -
 @tool
 async def search_web(query: str) -> str:
     """Search the web for current information. Returns snippets with source URLs."""
+    tavily_key = os.getenv("TAVILY_API_KEY")
+    brave_key = os.getenv("BRAVE_API_KEY")
+
+    # 1. Try Tavily API if key exists
+    if tavily_key:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    "https://api.tavily.com/search",
+                    json={"api_key": tavily_key, "query": query, "max_results": 4}
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    docs = [
+                        {
+                            "content": f"Title: {item.get('title', '')}\nSnippet: {item.get('content', '')}\nURL: {item.get('url', '')}",
+                            "metadata": {"source": "web", "title": item.get("title", "")},
+                            "score": 0.5,
+                            "source": "web"
+                        }
+                        for item in data.get("results", [])
+                    ]
+                    logger.info(f"Tavily search returned {len(docs)} results")
+                    return _format_chunks(docs)
+        except Exception as err:
+            logger.warning(f"Tavily search failed, falling back: {err}")
+
+    # 2. Try Brave Search API if key exists
+    if brave_key:
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://api.search.brave.com/res/v1/web/search",
+                    headers={"X-Subscription-Token": brave_key, "Accept": "application/json"},
+                    params={"q": query, "count": 4}
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    results = data.get("web", {}).get("results", [])
+                    docs = [
+                        {
+                            "content": f"Title: {item.get('title', '')}\nSnippet: {item.get('description', '')}\nURL: {item.get('url', '')}",
+                            "metadata": {"source": "web", "title": item.get("title", "")},
+                            "score": 0.5,
+                            "source": "web"
+                        }
+                        for item in results
+                    ]
+                    logger.info(f"Brave search returned {len(docs)} results")
+                    return _format_chunks(docs)
+        except Exception as err:
+            logger.warning(f"Brave search failed, falling back: {err}")
+
+    # 3. Fallback to DDGS
     try:
         def _search():
             with DDGS() as ddgs:
@@ -157,7 +213,7 @@ async def search_web(query: str) -> str:
             docs.append({"content": content, "metadata": {"source": "web", "title": r.get("title", "")}, "score": 0.5, "source": "web"})
 
         context = _format_chunks(docs)
-        logger.info(f"Web search returned {len(docs)} results")
+        logger.info(f"DuckDuckGo search returned {len(docs)} results")
         return context
     except Exception as e:
         logger.error(f"Web search failed: {e}")

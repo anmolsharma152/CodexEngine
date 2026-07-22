@@ -12,27 +12,22 @@ import uuid
 from sqlalchemy import text
 from src.llm import create_provider, ToolCall
 from src.agent.tool_registry import get_registry
+import src.agent.tools  # Ensure tools are registered via @tool decorators
 from src.db import async_engine
 from src.log_utils import logger
 
 MAX_ITERATIONS = 10
 
-SYSTEM_PROMPT = """You are CodexEngine, a knowledge workspace agent.
+SYSTEM_PROMPT = """You are CodexEngine, an autonomous knowledge workspace agent.
 
-YOU HAVE TWO KINDS OF CAPABILITIES:
+Capabilities:
+1. Research: Use `search_documents` or `search_web` to retrieve context.
+2. Production: Use `write_document` to save persistent artifacts, `read_document` to read artifacts, `list_documents` to list files.
 
-1. Research — search_documents and search_web to find information.
-2. Production — write_document to create persistent artifacts, read_document to consume them, list_documents to discover them.
-
-WHEN SOMEONE ASKS YOU TO ANALYZE, SUMMARIZE, PLAN, OR PRODUCE ANY OUTPUT:
-- Use write_document to save the result as a persistent artifact.
-- Tell the user what you wrote and where.
-- You can read your own artifacts later with read_document.
-- The path convention is: analysis/<topic>.md, summary/<topic>.md, plans/<topic>.md, etc.
-
-This means your work persists beyond this conversation. You can build on previous work by reading what you wrote earlier.
-
-Use search_documents and search_web as needed for research before writing."""
+Guidelines:
+- Always use `search_documents` or `search_web` to retrieve real information before drawing conclusions.
+- When asked to analyze, plan, or summarize, save your output as a persistent artifact using `write_document(path=..., content=...)`.
+- Follow path conventions for `write_document`: `analysis/<name>.md`, `summary/<name>.md`, `plans/<name>.md`."""
 
 
 _WORKSPACE_TOOLS = {"read_document", "write_document", "list_documents"}
@@ -63,12 +58,24 @@ async def agent_loop(
     lc.append({"role": "user", "content": user_message})
     yield json.dumps({"type": "status", "content": "Thinking..."})
 
+    executed_tool_calls = set()
+
     for iteration in range(MAX_ITERATIONS):
         logger.info(f"Iteration {iteration + 1}/{MAX_ITERATIONS}")
         result = await llm.complete(lc, tools=tool_defs)
 
         if result.tool_calls:
             for tc in result.tool_calls:
+                call_signature = f"{tc.name}:{tc.arguments}"
+                if call_signature in executed_tool_calls:
+                    logger.warning(f"Duplicate tool call detected: {call_signature}. Guiding LLM to finish.")
+                    lc.append({
+                        "role": "system",
+                        "content": f"The tool '{tc.name}' was already executed with these parameters. Do not repeat identical tool calls. Synthesize your final answer now."
+                    })
+                    break
+                executed_tool_calls.add(call_signature)
+
                 try:
                     args = json.loads(tc.arguments)
                 except json.JSONDecodeError:
@@ -123,7 +130,13 @@ async def agent_loop(
                     "content": None,
                     "tool_calls": [{"id": tc.id, "type": "function", "function": {"name": tc.name, "arguments": tc.arguments}}],
                 })
-                lc.append({"role": "tool", "tool_call_id": tc.id, "content": result_str})
+                
+                # Provide guidance hint if writing document is complete
+                tool_msg = result_str
+                if tc.name == "write_document" and not error:
+                    tool_msg += "\n\n[SYSTEM HINT]: Artifact saved successfully. You can now present your final response to the user."
+                
+                lc.append({"role": "tool", "tool_call_id": tc.id, "content": tool_msg})
             continue
 
         if result.content:

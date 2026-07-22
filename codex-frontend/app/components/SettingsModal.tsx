@@ -10,18 +10,26 @@ interface SettingsModalProps {
   username: string | null;
   displayName: string;
   systemPrompt: string;
+  provider?: string;
+  model?: string;
   onSaveDisplayName: (val: string) => void;
   onSaveSystemPrompt: (val: string) => void;
+  onSaveProvider?: (val: string) => void;
+  onSaveModel?: (val: string) => void;
 }
 
 export default function SettingsModal({
   open, onClose, username, displayName: savedDisplayName, systemPrompt: savedSystemPrompt,
-  onSaveDisplayName, onSaveSystemPrompt,
+  provider: savedProvider = "groq", model: savedModel = "qwen/qwen3.6-27b",
+  onSaveDisplayName, onSaveSystemPrompt, onSaveProvider, onSaveModel,
 }: SettingsModalProps) {
   const [editName, setEditName] = useState(savedDisplayName);
   const [editPrompt, setEditPrompt] = useState(savedSystemPrompt);
+  const [editProvider, setEditProvider] = useState(savedProvider);
+  const [editModel, setEditModel] = useState(savedModel);
   const [nameDirty, setNameDirty] = useState(false);
   const [promptDirty, setPromptDirty] = useState(false);
+  const [providerDirty, setProviderDirty] = useState(false);
 
   if (!open) return null;
 
@@ -143,6 +151,67 @@ export default function SettingsModal({
                       className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[var(--accent-purple-dim)] text-[var(--accent-purple)] border border-[var(--accent-purple-dim)] transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer active:scale-95 hover:bg-[var(--accent-purple)]/20"
                     >
                       {promptDirty ? "Save" : "Saved"}
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              {/* LLM Engine & Provider */}
+              <section>
+                <div className="flex items-center gap-2 mb-3">
+                  <RefreshCw size={14} className="text-[var(--accent-emerald)]" />
+                  <span className="text-2xs uppercase tracking-widest text-[var(--text-tertiary)] font-mono font-semibold">LLM Engine & Provider</span>
+                </div>
+                <div className="bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl p-4 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-xs text-[var(--text-tertiary)] font-mono block mb-1.5">Provider</span>
+                      <select
+                        value={editProvider}
+                        onChange={(e) => {
+                          const p = e.target.value;
+                          setEditProvider(p);
+                          setProviderDirty(true);
+                          if (p === "groq") setEditModel("qwen/qwen3.6-27b");
+                          else if (p === "openai") setEditModel("gpt-4o-mini");
+                          else if (p === "gemini") setEditModel("gemini-2.0-flash");
+                          else if (p === "anthropic") setEditModel("anthropic/claude-3.5-sonnet");
+                          else if (p === "openrouter") setEditModel("openrouter/free");
+                        }}
+                        className="w-full bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-emerald)]/40 transition-colors cursor-pointer font-mono"
+                      >
+                        <option value="groq">Groq Cloud (Qwen 27B / Llama 70B)</option>
+                        <option value="openai">OpenAI (GPT-4o / GPT-4o-mini)</option>
+                        <option value="gemini">Google Gemini (Gemini 2.0 Flash)</option>
+                        <option value="anthropic">Anthropic (Claude 3.5 Sonnet)</option>
+                        <option value="openrouter">OpenRouter Free (Auto-Router)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <span className="text-xs text-[var(--text-tertiary)] font-mono block mb-1.5">Model</span>
+                      <input
+                        type="text"
+                        value={editModel}
+                        onChange={(e) => { setEditModel(e.target.value); setProviderDirty(true); }}
+                        className="w-full bg-[var(--bg-inset)] border border-[var(--border-default)] rounded-lg px-3 py-2 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-emerald)]/40 transition-colors font-mono"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <span className="text-2xs text-[var(--text-tertiary)]">
+                      {editProvider === "openrouter" ? "🔒 Guaranteed 100% Free Model" : "⚡ Zero billing risk"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSaveProvider?.(editProvider);
+                        onSaveModel?.(editModel);
+                        setProviderDirty(false);
+                      }}
+                      disabled={!providerDirty}
+                      className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[var(--accent-emerald-dim)] text-[var(--accent-emerald)] border border-[var(--accent-emerald-dim)] transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer active:scale-95 hover:bg-[var(--accent-emerald)]/20"
+                    >
+                      {providerDirty ? "Save Model" : "Saved"}
                     </button>
                   </div>
                 </div>
