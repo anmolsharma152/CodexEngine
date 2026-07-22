@@ -5,7 +5,7 @@ from langchain_groq import ChatGroq
 
 load_dotenv()
 
-GROQ_MODEL_NAME = os.getenv("GROQ_MODEL_NAME", "qwen/qwen3.6-27b")
+GROQ_MODEL_NAME = os.getenv("GROQ_MODEL_NAME", "llama-3.1-8b-instant")
 
 # Groq free tier: 30 RPM → 1 request per 2 seconds
 _rate_limiter = asyncio.Semaphore(1)
