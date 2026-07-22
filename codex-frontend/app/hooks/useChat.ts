@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { Message, QuickPrompt } from "../lib/types";
 import { API_BASE } from "../lib/constants";
 import { toast } from "sonner";
@@ -40,6 +40,22 @@ export function useChat(
   const abortControllerRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!threadId) return;
+    let isMounted = true;
+    authFetch(`${API_BASE}/chat/${threadId}/history`)
+      .then((res) => (res.ok ? res.json() : { history: [] }))
+      .then((data) => {
+        if (isMounted && data && Array.isArray(data.history)) {
+          setMessages(data.history);
+        }
+      })
+      .catch((err) => console.error("Failed to load thread history:", err));
+    return () => {
+      isMounted = false;
+    };
+  }, [threadId, authFetch]);
 
   const selectSuggestedPrompts = useCallback(() => {
     const allDocs = [...documents, ...sessionFiles];

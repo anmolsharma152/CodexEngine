@@ -7,6 +7,7 @@ is just reasoning — the LLM does that directly.
 """
 
 import asyncio
+import os
 import uuid
 from sqlalchemy import text
 from duckduckgo_search import DDGS
