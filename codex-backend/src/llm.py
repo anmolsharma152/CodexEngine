@@ -31,9 +31,21 @@ class RateLimitedGroq(ChatGroq):
         raise RuntimeError("Only async invoke is supported")
 
 
+try:
+    from langfuse.callback import CallbackHandler
+    if os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"):
+        _langfuse_handler = CallbackHandler()
+    else:
+        _langfuse_handler = None
+except ImportError:
+    _langfuse_handler = None
+
+
 def get_chat_model(model: str | None = None, temperature: float = 0, max_retries: int = 3) -> RateLimitedGroq:
+    callbacks = [_langfuse_handler] if _langfuse_handler else None
     return RateLimitedGroq(
         model=model or GROQ_MODEL_NAME,
         temperature=temperature,
         max_retries=max_retries,
+        callbacks=callbacks,
     )
