@@ -29,6 +29,18 @@
       "question": "How does the author define the 'Axiological' framework of coloniality?",
       "target_document": "India that is Bharat - J Sai Deepak.pdf",
       "eval_focus": "Nuance and Tone"
+    },
+    {
+      "query_id": "q6_multidoc",
+      "question": "Compare the perspective on technological change in Anthropic Economic Report with the approach to generative memory in reinforcement learning.",
+      "target_document": "Anthropic_Nowcasting_Econ-Report-v16.pdf",
+      "eval_focus": "Multi-Document Synthesis"
+    },
+    {
+      "query_id": "q7_adversarial",
+      "question": "What are the key defensive techniques against adversarial attacks on Multimodal Large Language Models?",
+      "target_document": "Adversarial Attacks on Multimodal Large Language Models_ A Comprehensive Survey.pdf",
+      "eval_focus": "Safety & Adversarial Robustness"
     }
   ]
 }

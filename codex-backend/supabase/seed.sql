@@ -73,3 +73,13 @@ DO $$ BEGIN
     END IF;
   END IF;
 END $$;
+
+-- Seed baseline sample document chunks for initial retrieval & BM25 index initialization
+INSERT INTO prose_chunks (content, metadata)
+SELECT 'Multi-Agent RAG architecture combines Router, Retriever, Evaluator, and Actor nodes in an iterative self-correction loop.', '{"source": "Agentic Retrieval-Augmented Generation_ A Survey on Agentic RAG.pdf", "page": 1}'::jsonb
+WHERE NOT EXISTS (SELECT 1 FROM prose_chunks LIMIT 1);
+
+INSERT INTO prose_chunks (content, metadata)
+SELECT 'Kelsier planned to use the Eleventh Metal to defeat the Lord Ruler by revealing past lives and spiritual connections.', '{"source": "The Final Empire - Brandon Sanderson.pdf", "page": 42}'::jsonb
+WHERE NOT EXISTS (SELECT 1 FROM prose_chunks WHERE content LIKE 'Kelsier%');
+
