@@ -63,6 +63,7 @@ jobs:
           "
 
       - name: Run golden query test
+        if: ${{ secrets.GROQ_API_KEY != '' }}
         working-directory: codex-backend
         run: python tests/test_golden.py
         env:
@@ -73,6 +74,7 @@ jobs:
           SUPABASE_ANON_KEY: dummy-anon-key
 
       - name: Run rigorous sweep
+        if: ${{ secrets.GROQ_API_KEY != '' }}
         working-directory: codex-backend
         run: python tests/test_rigorous.py
         env:
@@ -83,6 +85,7 @@ jobs:
           SUPABASE_ANON_KEY: dummy-anon-key
 
       - name: Run RAGAS eval
+        if: ${{ secrets.GROQ_API_KEY != '' }}
         working-directory: codex-backend
         run: python eval/ragas_eval.py
         continue-on-error: true
