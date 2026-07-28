@@ -77,7 +77,9 @@ jobs:
       - name: Run rigorous sweep
         if: ${{ env.GROQ_API_KEY != '' }}
         working-directory: codex-backend
-        run: python tests/test_rigorous.py
+        run: |
+          sleep 15
+          python tests/test_rigorous.py
         env:
           DB_URL: postgresql+psycopg://postgres:postgres@localhost:5432/codex_db
           SUPABASE_URL: https://dummy-project.supabase.co

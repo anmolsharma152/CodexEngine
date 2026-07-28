@@ -50,7 +50,7 @@ async def run_rigorous_tests():
             "answer_length": len(final_answer),
         })
         
-        await asyncio.sleep(5)
+        await asyncio.sleep(10)
 
     with open("eval/v4_0_live_results.json", "w") as f:
         json.dump(results, f, indent=2)
