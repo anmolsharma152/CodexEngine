@@ -49,4 +49,10 @@ def ensure_schema():
         conn.execute(text("ALTER TABLE threads ENABLE ROW LEVEL SECURITY;"))
         conn.execute(text("ALTER TABLE prose_chunks ENABLE ROW LEVEL SECURITY;"))
         
+        # LangGraph tables created dynamically but still need RLS
+        conn.execute(text("ALTER TABLE IF EXISTS checkpoints ENABLE ROW LEVEL SECURITY;"))
+        conn.execute(text("ALTER TABLE IF EXISTS checkpoint_blobs ENABLE ROW LEVEL SECURITY;"))
+        conn.execute(text("ALTER TABLE IF EXISTS checkpoint_writes ENABLE ROW LEVEL SECURITY;"))
+        conn.execute(text("ALTER TABLE IF EXISTS checkpoint_migrations ENABLE ROW LEVEL SECURITY;"))
+        
         conn.commit()
