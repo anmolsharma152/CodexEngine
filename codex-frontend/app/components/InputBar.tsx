@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Paperclip, Send, X, HelpCircle, Trash2, Download, Settings, Slash } from "lucide-react";
+import { Paperclip, Send, X, HelpCircle, Trash2, Download, Settings, Slash, Globe } from "lucide-react";
 import type { Document } from "../lib/types";
 
 interface SlashCommand {
@@ -32,12 +32,14 @@ interface InputBarProps {
   onRemoveFile: (filename: string) => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
+  webSearchEnabled?: boolean;
+  setWebSearchEnabled?: (v: boolean) => void;
 }
 
 export default function InputBar({
   input, setInput, isStreaming, sessionFiles, uploadingFile, threadId,
   onSend, onStopThinking, onFileSelect, onRemoveFile,
-  inputRef, fileInputRef,
+  inputRef, fileInputRef, webSearchEnabled, setWebSearchEnabled
 }: InputBarProps) {
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
@@ -142,6 +144,17 @@ export default function InputBar({
             <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isStreaming || uploadingFile} className="p-2 md:p-2.5 text-primary hover:text-primary bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] rounded-full transition-all disabled:opacity-30 active:scale-95 flex items-center justify-center cursor-pointer" title="Attach document to this thread">
               <Paperclip size={18} />
             </button>
+            {setWebSearchEnabled && (
+              <button 
+                type="button" 
+                onClick={() => setWebSearchEnabled(!webSearchEnabled)} 
+                disabled={isStreaming} 
+                className={`p-2 md:p-2.5 rounded-full transition-all disabled:opacity-30 active:scale-95 flex items-center justify-center cursor-pointer ${webSearchEnabled ? "text-[var(--accent-blue)] bg-[var(--accent-blue)]/10" : "text-[var(--text-tertiary)] bg-[var(--bg-surface)] hover:bg-[var(--bg-elevated)] hover:text-primary"}`} 
+                title={webSearchEnabled ? "Web Search: ON" : "Web Search: OFF"}
+              >
+                <Globe size={18} />
+              </button>
+            )}
             {isStreaming ? (
               <button type="button" onClick={onStopThinking} className="p-2.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-full transition-all cursor-pointer shadow-md active:scale-95 flex items-center justify-center" title="Stop Thinking">
                 <X size={18} />

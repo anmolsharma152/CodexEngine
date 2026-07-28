@@ -35,6 +35,7 @@ export function useChat(
   const [status, setStatus] = useState("System Standby");
   const [isStreaming, setIsStreaming] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [webSearchEnabled, setWebSearchEnabled] = useState(true);
   const [suggestedPrompts, setSuggestedPrompts] = useState<QuickPrompt[]>(() => [...ALL_QUICK_PROMPTS].sort(() => Math.random() - 0.5).slice(0, 3));
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -109,13 +110,23 @@ export function useChat(
     const exists = threads.some((t) => t.id === threadId);
     if (!exists) {
       const title = userMessage.length > 28 ? userMessage.slice(0, 25) + "..." : userMessage;
-      const newThread = { id: threadId, title, timestamp: Date.now(), projectId };
+      const newThread = { id: threadId, title, timestamp: Date.now(), projectId, first_message: userMessage };
       saveThreads([newThread, ...threads]);
       authFetch(`${API_BASE}/threads`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newThread),
-      }).catch((e) => console.error("Failed to sync new thread", e));
+      })
+      .then(async (res) => {
+        if (res.ok) {
+          const data = await res.json();
+          if (data.generated_title) {
+            const updated = [newThread, ...threads].map(t => t.id === threadId ? { ...t, title: data.generated_title } : t);
+            saveThreads(updated);
+          }
+        }
+      })
+      .catch((e) => console.error("Failed to sync new thread", e));
     }
 
     const controller = new AbortController();
@@ -132,6 +143,7 @@ export function useChat(
           project_id: projectId || "default",
           provider: provider || "groq",
           model: model || undefined,
+          web_search_enabled: webSearchEnabled
         }),
         signal: controller.signal,
       });
@@ -191,7 +203,7 @@ export function useChat(
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
-  }, [input, isStreaming, threadId, projectId, authFetch]);
+  }, [input, isStreaming, threadId, projectId, authFetch, webSearchEnabled]);
 
   const exportChatMarkdown = useCallback(() => {
     if (messages.length === 0) return;
@@ -219,6 +231,9 @@ export function useChat(
     abortControllerRef,
     messagesEndRef,
     inputRef,
+    fileInputRef,
+    webSearchEnabled,
+    setWebSearchEnabled,
     selectSuggestedPrompts,
     handleQuickPromptClick,
     copyToClipboard,

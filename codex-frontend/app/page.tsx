@@ -336,6 +336,8 @@ export default function Home() {
           onRemoveFile={handleRemoveTemporalFile}
           inputRef={chat.inputRef}
           fileInputRef={fileInputRef}
+          webSearchEnabled={chat.webSearchEnabled}
+          setWebSearchEnabled={chat.setWebSearchEnabled}
         />
       </main>
 

@@ -42,10 +42,14 @@ async def agent_loop(
     system_prompt: str | None = None,
     provider: str = "groq",
     model: str | None = None,
+    web_search_enabled: bool = True,
 ):
     """Yield SSE JSON lines."""
     registry = get_registry()
     tool_defs = registry.get_definitions()
+    if not web_search_enabled:
+        tool_defs = [t for t in tool_defs if t["function"]["name"] != "search_web"]
+        
     llm = create_provider(provider=provider, model=model)
 
     lc = [{"role": "system", "content": system_prompt or SYSTEM_PROMPT}]

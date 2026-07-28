@@ -21,6 +21,7 @@ from src.log_utils import logger
 from src.supabase_client import supabase
 from src.db import async_engine, ensure_schema
 import src.storage_client as storage_client
+from src.llm import create_provider
 
 load_dotenv()
 
@@ -241,6 +242,7 @@ class SaveThreadRequest(BaseModel):
     title: str
     timestamp: int
     pinned: bool = False
+    first_message: str | None = None
 
 
 class ChatRequest(BaseModel):
@@ -250,6 +252,7 @@ class ChatRequest(BaseModel):
     system_prompt: str | None = None
     provider: str = "groq"
     model: str | None = None
+    web_search_enabled: bool = True
 
 
 # Endpoints
@@ -321,17 +324,41 @@ async def get_threads_endpoint(current_user=Depends(get_current_user)):
 @app.post("/threads")
 async def save_thread_endpoint(request: SaveThreadRequest, current_user=Depends(get_current_user)):
     select_query = text("SELECT id FROM threads WHERE id = :id AND user_id = :user_id;")
+    generated_title = None
+    
     async with async_engine.connect() as conn:
         existing = await conn.execute(select_query, {"id": request.id, "user_id": current_user.id})
         row = existing.fetchone()
+        
+        final_title = request.title
+        
+        if not row and request.first_message:
+            try:
+                llm = create_provider("groq")
+                prompt = (
+                    "You are a helpful assistant that generates extremely short titles for chat threads. "
+                    "Read the user's first message and generate a title of NO MORE THAN 4 WORDS. "
+                    "Do not include quotes or punctuation in the title. Respond ONLY with the title."
+                )
+                msgs = [
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": request.first_message}
+                ]
+                result = await llm.complete(messages=msgs, system=prompt)
+                if result.content:
+                    final_title = result.content.strip().strip('"').strip("'")
+                    generated_title = final_title
+            except Exception as e:
+                logger.error(f"Title generation failed: {e}")
+                
         if row:
             update_query = text("UPDATE threads SET title = :title, timestamp = :timestamp, pinned = :pinned WHERE id = :id AND user_id = :user_id;")
             await conn.execute(update_query, {"title": request.title, "timestamp": request.timestamp, "pinned": request.pinned, "id": request.id, "user_id": current_user.id})
         else:
             insert_query = text("INSERT INTO threads (id, user_id, title, timestamp, pinned) VALUES (:id, :user_id, :title, :timestamp, :pinned);")
-            await conn.execute(insert_query, {"id": request.id, "user_id": current_user.id, "title": request.title, "timestamp": request.timestamp, "pinned": request.pinned})
+            await conn.execute(insert_query, {"id": request.id, "user_id": current_user.id, "title": final_title, "timestamp": request.timestamp, "pinned": request.pinned})
         await conn.commit()
-    return {"message": "Thread saved successfully"}
+    return {"message": "Thread saved successfully", "generated_title": generated_title}
 
 
 @app.delete("/threads/{thread_id}")
@@ -358,9 +385,11 @@ async def chat_stream_endpoint(request: ChatRequest, current_user=Depends(get_cu
                 thread_id=request.thread_id,
                 user_id=current_user.id,
                 project_id=request.project_id,
+                messages=history,
                 system_prompt=request.system_prompt,
                 provider=request.provider,
                 model=request.model,
+                web_search_enabled=request.web_search_enabled,
             ):
                 yield f"data: {event_json}\n\n"
                 event = json.loads(event_json)
