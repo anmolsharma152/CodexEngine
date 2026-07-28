@@ -1,0 +1,5 @@
+{
+  "buildCommand": "cd codex-frontend && npm run build",
+  "installCommand": "cd codex-frontend && npm install",
+  "outputDirectory": "codex-frontend/.next"
+}

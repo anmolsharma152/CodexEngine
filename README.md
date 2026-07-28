@@ -84,15 +84,26 @@ All of this runs through the v4 retrieval pipeline, which currently uses LangGra
 
 The experimental `agentic` branch replaces this architecture with a custom agent loop.
 
-### Running Modes
+### Model Stack & Running Modes
 
-| Feature    | Local / CI                              | Production (Render 512MB)  |
-| ---------- | --------------------------------------- | -------------------------- |
-| Embeddings | fastembed ONNX (`bge-small-en-v1.5`)    | Google Gemini API          |
-| Reranker   | CrossEncoder (`ms-marco-MiniLM-L-6-v2`) | Score-based sort           |
-| Detection  | `MemTotal > 1.5GB` or no `RENDER` env   | `RENDER=true` or `< 1.5GB` |
+| Layer | Primary / Default | Fallback / Alternative | Notes |
+| :--- | :--- | :--- | :--- |
+| **Generation LLM** | `qwen/qwen3.6-27b` | `llama-3.1-8b-instant` | Groq API with built-in 30 RPM rate limiter |
+| **Embeddings** | `fastembed` (`BAAI/bge-small-en-v1.5`) | Google Gemini (`text-embedding-004`) | FastEmbed ONNX locally; Gemini API on low-RAM cloud |
+| **Reranker** | CrossEncoder (`ms-marco-MiniLM-L-6-v2`) | Score-based sort | Local cross-encoder on high-RAM; score sort on low-RAM |
 
-Both modes produce 384-dimensional vectors.
+### Embeddings Architecture
+
+CodexEngine employs a hybrid local-first embedding strategy to maximize performance and minimize API costs:
+
+```mermaid
+graph TD
+    A["get_embedding_function()"] --> B{"Check System RAM / Environment"}
+    B -- "RAM >= 1.5 GB (Local Machine)" --> C["FastEmbed (BAAI/bge-small-en-v1.5)"]
+    C --> D["Runs locally in-process via ONNX Runtime CPU"]
+    B -- "Low RAM / RENDER='true'" --> E["Gemini API (text-embedding-004)"]
+    C -- "Import / Load Error" --> E
+```
 
 ## Architecture
 
@@ -100,7 +111,7 @@ Both modes produce 384-dimensional vectors.
 flowchart TD
     User([User / Browser])
 
-    subgraph Frontend [codex-frontend — Next.js 15]
+    subgraph Frontend [codex-frontend — Next.js 16]
         AuthUI[Auth UI]
         ChatUI[Chat UI / SSE]
         DocMgr[Document Manager]
@@ -142,9 +153,9 @@ flowchart TD
     end
 
     subgraph External [External APIs]
-        Groq[Groq<br>LLM — llama-3.1]
-        Gemini[Google Gemini<br>embeddings]
-        FastEmbed[fastembed ONNX<br>embeddings]
+        Groq[Groq<br>Qwen 27B / Llama 3.1]
+        Gemini[Google Gemini<br>embeddings fallback]
+        FastEmbed[fastembed ONNX<br>embeddings primary]
     end
 
     User --> Frontend
