@@ -231,7 +231,6 @@ export function useChat(
     abortControllerRef,
     messagesEndRef,
     inputRef,
-    fileInputRef,
     webSearchEnabled,
     setWebSearchEnabled,
     selectSuggestedPrompts,
