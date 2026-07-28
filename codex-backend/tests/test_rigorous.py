@@ -32,14 +32,21 @@ async def run_rigorous_tests():
         config = {"configurable": {"thread_id": f"thread_{q['query_id']}"}}
 
         final_answer = ""
-        try:
-            async for output in app.astream(inputs, config):
-                for node, state in output.items():
-                    if node == "actor":
-                        final_answer = state.get("response", "")
-        except Exception as e:
-            failures.append({"query_id": q["query_id"], "error": str(e)})
-            continue
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                async for output in app.astream(inputs, config):
+                    for node, state in output.items():
+                        if node == "actor":
+                            final_answer = state.get("response", "")
+                break
+            except Exception as e:
+                if ("429" in str(e) or "rate_limit" in str(e).lower()) and attempt < max_retries - 1:
+                    print(f"Rate limit hit for {q['query_id']} (attempt {attempt + 1}), sleeping 15s...")
+                    await asyncio.sleep(15)
+                    continue
+                failures.append({"query_id": q["query_id"], "error": str(e)})
+                break
 
         assert final_answer, f"[{q['query_id']}] Empty response. Question: {q['question'][:60]}..."
         assert len(final_answer) > 50, f"[{q['query_id']}] Response too short ({len(final_answer)} chars)"
