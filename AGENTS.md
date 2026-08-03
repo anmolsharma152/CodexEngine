@@ -149,14 +149,27 @@ For full details:
 
 ---
 
-## Future Research (Not Implemented)
+## Planned Architecture Roadmap (v5.1 – v5.3)
 
-These are ideas explored in research notes and external references. Nothing here is implemented or planned for v5 MVP.
+Post-v5 MVP validation, the following architectural expansions are scheduled:
 
-- **Memory systems**: Episodic/semantic memory, memory recall tools, per-project memory stores. See `codex-backend/docs/future-memory-model.md` for research notes — do not implement.
-- **MCP adapter**: Dynamic discovery of external tools via Model Context Protocol (Notion, Google Docs, Confluence). Our `@tool` decorator + in-process registry is sufficient for MVP.
+1. **v5.1 Firecrawl Documentation & Web Ingestion**:
+   - **Deep Web Crawling**: Ingest entire online tech documentation sites (FastAPI, PyTorch, Next.js) in clean Markdown.
+   - **Header-Aware Chunking**: Uses `MarkdownHeaderTextSplitter` (`#`, `##`, `###`) to preserve logical sections, code blocks, and context boundaries in `prose_chunks` vector storage.
+2. **v5.2 Composio Enterprise Tool Suite**:
+   - **100+ Managed Tools**: Integrates pre-built, auth-managed third-party tools (GitHub, Notion, Slack, Jira) directly into `@tool` definitions in `agent_loop.py`.
+   - **No Sidecar MCP Servers**: Bypasses MCP daemon processes and JSON-RPC overhead by using standard LLM `tool_choice` schemas.
+3. **v5.3 Persistent Memory & Session Management**:
+   - **Path Conventions**: Extends `workspace_artifacts` with `memory/<topic>.md` (agent notes-to-self) and `decisions/<adr>.md` (Architecture Decision Records).
+   - **Session Handoff**: `workspace-state/session.json` auto-generated at session end to enable multi-day context continuity.
+
+---
+
+## Future Research (Post-v5.3)
+
+These are ideas explored in research notes and external references for future consideration:
+
 - **Subagents**: Spawning child agents with narrowed tools/context for parallel exploration. Not needed until multi-topic document research is required.
-- **External integrations**: Third-party API connectors beyond DuckDuckGo (e.g., Notion API, Google Drive, Slack).
 - **Knowledge graph**: Entity extraction, relationship mapping, graph-based retrieval augmentation.
 
 ---

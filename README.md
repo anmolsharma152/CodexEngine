@@ -174,6 +174,21 @@ questions.
 
 ---
 
+## Roadmap & Upcoming Architecture
+
+```
+v5.0 (Current) ──► v5.1 (Firecrawl) ──► v5.2 (Composio) ──► v5.3 (Memory Architecture)
+```
+
+- **v5.1 Firecrawl Ingestion**: Ingest entire online documentation hubs (FastAPI, PyTorch, Next.js) in clean Markdown. Uses `MarkdownHeaderTextSplitter` (`#`, `##`, `###`) for semantic section chunking rather than arbitrary character bounds.
+- **v5.2 Composio Tool Ecosystem**: Integrates 100+ pre-built, auth-managed third-party tools (GitHub, Notion, Slack, Jira) directly into `@tool` definitions in `agent_loop.py` without requiring sidecar MCP daemon processes or JSON-RPC protocol overhead.
+- **v5.3 Persistent Agent Memory**: Extends `workspace_artifacts` with structured path conventions:
+  - `memory/<topic>.md` — Proactive agent notes-to-self across sessions.
+  - `decisions/<adr>.md` — Architecture Decision Records preventing settled choice re-litigation.
+  - `workspace-state/session.json` — Machine-readable session handoff for multi-day continuity.
+
+---
+
 ## Relationship To Main
 
 This repository has three long-lived branches:
