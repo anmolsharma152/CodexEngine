@@ -42,15 +42,11 @@
 
 ## Production Keep-Alive & Monitoring Strategy
 
-To prevent **Render free tier spin-down** (15-minute idle timeout) and **Supabase auto-pause** (7-day inactivity pause), CodexEngine uses a **Hybrid Keep-Alive Pattern**:
+To prevent **Render free tier spin-down** (15-minute idle timeout) and **Supabase auto-pause** (7-day inactivity pause), CodexEngine uses **UptimeRobot**:
 
-### 🥇 Primary Solution: UptimeRobot (Real-Time Monitor)
+### UptimeRobot (Real-Time Monitor)
 - **Setup**: Create a free HTTP monitor at [UptimeRobot.com](https://uptimerobot.com/) targeting `https://<your-backend>.onrender.com/` (or `/health`) every **5 minutes**.
-- **Why Primary**: Guarantees exact 5-minute precision without runner queue delays, keeps Render 100% warm 24/7, and instantly notifies via Email/Slack if the service crashes.
-
-### 🥈 Secondary Backup: GitHub Actions Workflow (`.github/workflows/keep_alive.yml`)
-- **Setup**: Automatically enabled via `.github/workflows/keep_alive.yml` in the repository running every 14 minutes (`cron: '*/14 * * * *'`).
-- **Function**: Sends HTTP requests to both Render backend (`secrets.RENDER_BACKEND_URL`) and Supabase REST API (`secrets.SUPABASE_URL`) as an in-repo automated backup.
+- **Why**: Guarantees exact 5-minute precision, keeps Render 100% warm 24/7, and instantly notifies via Email/Slack if the service crashes.
 
 ## CI/CD
 
