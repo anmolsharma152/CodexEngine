@@ -50,7 +50,21 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <TooltipProvider delay={200}>
-          {children}
+          <div className="flex-1 flex flex-col">{children}</div>
+          <footer className="py-2.5 text-center text-xs text-muted-foreground border-t border-border/40 bg-background/50 backdrop-blur">
+            Engineered by{" "}
+            <a href="https://linkedin.com/in/anmolsharma152" target="_blank" rel="noreferrer" className="text-foreground hover:underline font-medium">
+              Anmol Sharma
+            </a>{" "}
+            ·{" "}
+            <a href="https://github.com/anmolsharma152/CodexEngine" target="_blank" rel="noreferrer" className="hover:text-foreground hover:underline">
+              GitHub
+            </a>{" "}
+            ·{" "}
+            <a href="https://anmolsharma152.vercel.app" target="_blank" rel="noreferrer" className="hover:text-foreground hover:underline">
+              Portfolio
+            </a>
+          </footer>
           <Toaster />
         </TooltipProvider>
       </body>
