@@ -956,13 +956,16 @@ export default function Home() {
               </div>
 
               {/* Title */}
-              <div>
-                <h1 className="text-4xl lg:text-5xl font-extrabold bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent tracking-tight">
-                  CodexEngine
-                </h1>
-                <p className="text-sm font-medium text-blue-400 mt-1 uppercase tracking-widest">
-                  Cognitive Knowledge Operating System
-                </p>
+              <div className="flex items-center gap-4">
+                <CodexLogo size={44} className="shrink-0" />
+                <div>
+                  <h1 className="text-4xl lg:text-5xl font-extrabold bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent tracking-tight">
+                    CodexEngine
+                  </h1>
+                  <p className="text-sm font-medium text-blue-400 mt-1 uppercase tracking-widest">
+                    Cognitive Knowledge Operating System
+                  </p>
+                </div>
               </div>
 
               {/* Tagline */}
