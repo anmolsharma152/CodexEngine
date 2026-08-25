@@ -4,7 +4,7 @@ from src.state import AgentState
 from src.log_utils import logger
 from src.llm import get_chat_model
 
-llm = get_chat_model(model="llama-3.3-70b-versatile", temperature=0.3, max_retries=3)
+llm = get_chat_model(temperature=0.3, max_retries=3)
 
 
 async def generate_answer(state: AgentState):

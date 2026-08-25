@@ -251,7 +251,16 @@ app = FastAPI(title="CodexEngine V4 API", lifespan=lifespan)
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "app": "CodexEngine V4", "version": "4.0"}
+    db_status = "ok"
+    try:
+        from src.db import engine
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as e:
+        logger.warning(f"Root ping database check failed: {e}")
+        db_status = "degraded"
+    return {"status": "ok", "app": "CodexEngine V4", "version": "4.0", "db": db_status}
 ALLOWED_ORIGINS = os.environ.get(
     "ALLOWED_ORIGINS",
     "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001",

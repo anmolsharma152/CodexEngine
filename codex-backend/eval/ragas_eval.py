@@ -12,7 +12,9 @@ from src.log_utils import logger
 checkpointer = MemorySaver()
 app = create_graph(checkpointer)
 
-judge_llm = ChatGroq(model="llama-3.1-8b-instant", temperature=0, max_retries=3)
+import os
+judge_model = os.getenv("GROQ_MODEL_NAME", "qwen/qwen3.6-27b")
+judge_llm = ChatGroq(model=judge_model, temperature=0, max_retries=3)
 
 
 async def llm_judge(prompt: str, retries=5) -> str:
