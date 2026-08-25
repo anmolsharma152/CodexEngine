@@ -1,62 +1,48 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" fill="none">
   <defs>
-    <!-- Dark Theme Obsidian Background -->
+    <!-- Background Obsidian Gradient -->
     <linearGradient id="cdxBg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#0B0F19"/>
-      <stop offset="50%" stop-color="#060A12"/>
-      <stop offset="100%" stop-color="#020408"/>
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#020617"/>
     </linearGradient>
     
-    <!-- Neon Electric Cyan to Deep Azure Gradient -->
-    <linearGradient id="cdxCyan" x1="8" y1="8" x2="24" y2="24" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#67E8F9"/>
-      <stop offset="40%" stop-color="#38BDF8"/>
-      <stop offset="100%" stop-color="#2563EB"/>
+    <!-- Top Layer (Reasoning & Agent Engine) -->
+    <linearGradient id="topPlate" x1="7.5" y1="6" x2="24.5" y2="15" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#0EA5E9"/>
+    </linearGradient>
+    
+    <!-- Middle Layer (Retrieval & Vector State) -->
+    <linearGradient id="midPlate" x1="7.5" y1="12" x2="24.5" y2="21" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#60A5FA"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
     </linearGradient>
 
-    <!-- Accent Highlight Gradient -->
-    <linearGradient id="cdxAccent" x1="6" y1="6" x2="26" y2="26" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.8"/>
-      <stop offset="100%" stop-color="#1D4ED8" stop-opacity="0.2"/>
+    <!-- Bottom Layer (Storage & Persistent Artifacts) -->
+    <linearGradient id="botPlate" x1="7.5" y1="18" x2="24.5" y2="27" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#6366F1"/>
     </linearGradient>
 
-    <!-- Glowing Rim -->
-    <linearGradient id="cdxBorder" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+    <!-- Outer Frame Glow Border -->
+    <linearGradient id="borderGrad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.6"/>
-      <stop offset="50%" stop-color="#1E293B" stop-opacity="0.4"/>
-      <stop offset="100%" stop-color="#0284C7" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#6366F1" stop-opacity="0.3"/>
     </linearGradient>
-
-    <!-- Ambient Core Glow -->
-    <radialGradient id="cdxRadialGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#0EA5E9" stop-opacity="0.25"/>
-      <stop offset="100%" stop-color="#0EA5E9" stop-opacity="0"/>
-    </radialGradient>
   </defs>
 
   <!-- Squircle Base Frame -->
-  <rect x="1" y="1" width="30" height="30" rx="8" fill="url(#cdxBg)"/>
-  <rect x="1" y="1" width="30" height="30" rx="8" stroke="url(#cdxBorder)" stroke-width="1.2"/>
-  
-  <!-- Subtle Ambient Glow in Core -->
-  <circle cx="16" cy="16" r="11" fill="url(#cdxRadialGlow)"/>
+  <rect x="1" y="1" width="30" height="30" rx="8" fill="url(#cdxBg)" stroke="url(#borderGrad)" stroke-width="1.2"/>
 
-  <!-- Codex Document / Workspace Plate (Backing Layer) -->
-  <path d="M7.5 9.5C7.5 8.4 8.4 7.5 9.5 7.5H19L24.5 13V22.5C24.5 23.6 23.6 24.5 22.5 24.5H9.5C8.4 24.5 7.5 23.6 7.5 22.5V9.5Z" 
-        fill="#0F172A" fill-opacity="0.7" stroke="url(#cdxAccent)" stroke-width="1.2" stroke-linejoin="round"/>
+  <!-- Layer 3: Storage & Artifact Foundation -->
+  <path d="M16 18L24.5 22.5L16 27L7.5 22.5L16 18Z" fill="url(#botPlate)" fill-opacity="0.4" stroke="url(#botPlate)" stroke-width="1.2" stroke-linejoin="round"/>
 
-  <!-- Document Fold Notch -->
-  <path d="M19 7.5V12C19 12.55 19.45 13 20 13H24.5" 
-        stroke="url(#cdxAccent)" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Layer 2: Hybrid Retrieval & Memory Pipeline -->
+  <path d="M16 12L24.5 16.5L16 21L7.5 16.5L16 12Z" fill="url(#midPlate)" fill-opacity="0.6" stroke="url(#midPlate)" stroke-width="1.2" stroke-linejoin="round"/>
 
-  <!-- Bold Agent Terminal Prompt: `>` -->
-  <path d="M11.5 13L15.5 16.5L11.5 20" 
-        stroke="url(#cdxCyan)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Layer 1: Autonomous Cognitive Agent Engine -->
+  <path d="M16 6L24.5 10.5L16 15L7.5 10.5L16 6Z" fill="url(#topPlate)" stroke="#BAE6FD" stroke-width="1.2" stroke-linejoin="round"/>
 
-  <!-- Agent Execution Cursor: `_` -->
-  <line x1="17.5" y1="20" x2="21" y2="20" 
-        stroke="url(#cdxCyan)" stroke-width="2.2" stroke-linecap="round"/>
-
-  <!-- Active Agent Pulse Core -->
-  <circle cx="18" cy="13" r="1.5" fill="#38BDF8"/>
+  <!-- Center Nexus Core -->
+  <circle cx="16" cy="10.5" r="1.5" fill="#FFFFFF"/>
 </svg>

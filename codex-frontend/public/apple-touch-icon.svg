@@ -1,52 +1,59 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" width="180" height="180" fill="none">
   <defs>
-    <linearGradient id="appleBg" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+    <!-- Background Obsidian Gradient -->
+    <linearGradient id="appleLogoBg" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#0F172A"/>
       <stop offset="50%" stop-color="#080D1A"/>
       <stop offset="100%" stop-color="#020617"/>
     </linearGradient>
     
-    <linearGradient id="appleCyan" x1="45" y1="45" x2="135" y2="135" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#67E8F9"/>
-      <stop offset="40%" stop-color="#38BDF8"/>
-      <stop offset="100%" stop-color="#2563EB"/>
+    <!-- Top Layer (Reasoning & Agent Engine) -->
+    <linearGradient id="appleTopPlate" x1="42" y1="34" x2="138" y2="84" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#0EA5E9"/>
+    </linearGradient>
+    
+    <!-- Middle Layer (Retrieval & Vector State) -->
+    <linearGradient id="appleMidPlate" x1="42" y1="68" x2="138" y2="118" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#60A5FA"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
     </linearGradient>
 
-    <linearGradient id="appleBorder" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+    <!-- Bottom Layer (Storage & Persistent Artifacts) -->
+    <linearGradient id="appleBotPlate" x1="42" y1="102" x2="138" y2="152" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#6366F1"/>
+    </linearGradient>
+
+    <!-- Outer Frame Glow Border -->
+    <linearGradient id="appleBorderGrad" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.8"/>
       <stop offset="50%" stop-color="#1E293B" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#0284C7" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#6366F1" stop-opacity="0.6"/>
     </linearGradient>
 
-    <radialGradient id="appleGlow" cx="50%" cy="50%" r="50%">
+    <!-- Ambient Core Glow -->
+    <radialGradient id="appleAmbientGlow" cx="50%" cy="40%" r="55%">
       <stop offset="0%" stop-color="#0EA5E9" stop-opacity="0.35"/>
       <stop offset="100%" stop-color="#0EA5E9" stop-opacity="0"/>
     </radialGradient>
   </defs>
 
-  <!-- Full Apple Touch Frame -->
-  <rect width="180" height="180" rx="40" fill="url(#appleBg)"/>
-  <rect x="2" y="2" width="176" height="176" rx="38" stroke="url(#appleBorder)" stroke-width="4"/>
+  <!-- Squircle Base Frame -->
+  <rect x="6" y="6" width="168" height="168" rx="42" fill="url(#appleLogoBg)" stroke="url(#appleBorderGrad)" stroke-width="5"/>
 
-  <!-- Core Ambient Glow -->
-  <circle cx="90" cy="90" r="60" fill="url(#appleGlow)"/>
+  <!-- Ambient Glow -->
+  <circle cx="90" cy="76" r="66" fill="url(#appleAmbientGlow)"/>
 
-  <!-- Layered Codex Document Plate -->
-  <path d="M42 54C42 47.37 47.37 42 54 42H106L138 74V126C138 132.63 132.63 138 126 138H54C47.37 138 42 132.63 42 126V54Z" 
-        fill="#1E293B" fill-opacity="0.7" stroke="#38BDF8" stroke-opacity="0.4" stroke-width="5" stroke-linejoin="round"/>
+  <!-- Layer 3: Storage & Artifact Foundation -->
+  <path d="M90 102L138 127L90 152L42 127L90 102Z" fill="url(#appleBotPlate)" fill-opacity="0.4" stroke="url(#appleBotPlate)" stroke-width="5" stroke-linejoin="round"/>
 
-  <!-- Fold Notch -->
-  <path d="M106 42V68C106 71.3 108.7 74 112 74H138" 
-        stroke="#38BDF8" stroke-opacity="0.5" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Layer 2: Hybrid Retrieval & Memory Pipeline -->
+  <path d="M90 68L138 93L90 118L42 93L90 68Z" fill="url(#appleMidPlate)" fill-opacity="0.6" stroke="url(#appleMidPlate)" stroke-width="5" stroke-linejoin="round"/>
 
-  <!-- Autonomous Agent Terminal Prompt: `>` -->
-  <path d="M64 73L87 93L64 113" 
-        stroke="url(#appleCyan)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Layer 1: Autonomous Cognitive Agent Engine -->
+  <path d="M90 34L138 59L90 84L42 59L90 34Z" fill="url(#appleTopPlate)" stroke="#BAE6FD" stroke-width="5" stroke-linejoin="round"/>
 
-  <!-- Execution Block Cursor: `_` -->
-  <line x1="99" y1="113" x2="119" y2="113" 
-        stroke="url(#appleCyan)" stroke-width="11" stroke-linecap="round"/>
-
-  <!-- Active Pulse Core -->
-  <circle cx="102" cy="73" r="8" fill="#38BDF8"/>
+  <!-- Center Nexus Core -->
+  <circle cx="90" cy="59" r="8" fill="#FFFFFF"/>
 </svg>
