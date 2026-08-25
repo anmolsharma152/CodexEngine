@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { CodexLogo } from "./components/CodexLogo";
 import { createClient } from "@supabase/supabase-js";
 import {
   MessageSquare,
@@ -1257,8 +1258,8 @@ export default function Home() {
         >
           {sidebarOpen ? (
             <>
-              <div className="flex items-center gap-2 overflow-hidden">
-                <TerminalSquare size={18} className="text-blue-400 shrink-0" />
+              <div className="flex items-center gap-2.5 overflow-hidden">
+                <CodexLogo size={22} className="shrink-0" />
                 <span className="font-medium text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight whitespace-nowrap">
                   CodexEngine
                 </span>
@@ -1793,8 +1794,8 @@ export default function Home() {
         } transition-transform duration-300 ease-in-out flex flex-col`}
       >
         <div className="h-16 flex items-center justify-between px-6 border-b border-white/10">
-          <div className="flex items-center gap-2">
-            <TerminalSquare className="text-blue-400" size={18} />
+          <div className="flex items-center gap-2.5">
+            <CodexLogo size={20} />
             <span className="font-bold text-white tracking-tight">Source Context</span>
           </div>
           <button
