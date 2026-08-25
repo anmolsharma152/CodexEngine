@@ -22,6 +22,8 @@ __pycache__/
 data/
 *.log
 tmp/
+*benchmark*.json
+*report*.json
 
 # Secrets & keys
 *.secret
